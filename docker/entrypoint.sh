@@ -3,13 +3,18 @@
 # Claude Computer Use Backend - Entrypoint Script
 # ==============================================================================
 #
-# Initializes and starts all required services:
-# 1. X11 virtual framebuffer (Xvfb)
-# 2. Window manager (Mutter)
-# 3. VNC server (x11vnc)
-# 4. noVNC web interface
-# 5. FastAPI backend
-# 6. Static file server for frontend
+# Multi-Session Architecture:
+# ---------------------------
+# X11/VNC services are now managed dynamically by the DisplayManager service.
+# Each session gets its own isolated display created on demand:
+# - Session 1 → DISPLAY=:1, VNC port 5901, noVNC port 6081
+# - Session 2 → DISPLAY=:2, VNC port 5902, noVNC port 6082
+# - etc.
+#
+# This script only starts:
+# 1. Database initialization
+# 2. FastAPI backend (which includes DisplayManager)
+# 3. Static file server for frontend
 #
 # ==============================================================================
 
@@ -17,6 +22,7 @@ set -e
 
 echo "=============================================="
 echo "  Claude Computer Use Backend"
+echo "  Multi-Session Architecture"
 echo "=============================================="
 echo ""
 
@@ -24,32 +30,17 @@ echo ""
 # Environment Setup
 # ==============================================================================
 
-export DISPLAY=:${DISPLAY_NUM:-1}
 export HOME=/home/computeruse
 
 cd $HOME
 
 # ==============================================================================
-# Start X11/VNC Stack
+# NOTE: X11/VNC services are now created per-session by DisplayManager
 # ==============================================================================
 
-echo "🖥️  Starting X11 virtual framebuffer..."
-./xvfb_startup.sh
-
-echo "🪟 Starting window manager..."
-./mutter_startup.sh
-
-echo "📺 Starting VNC server..."
-./x11vnc_startup.sh
-
-echo "🌐 Starting noVNC web interface..."
-./novnc_startup.sh
-
-# Wait for X11 to be ready
-sleep 2
-
-echo "🖥️  Starting taskbar..."
-./tint2_startup.sh
+echo "ℹ️  X11/VNC services will be created per-session by DisplayManager"
+echo "   Each session gets an isolated DISPLAY and VNC port"
+echo ""
 
 # ==============================================================================
 # Initialize Database
@@ -91,7 +82,16 @@ echo ""
 echo "  📡 API:       http://localhost:8000"
 echo "  📝 API Docs:  http://localhost:8000/docs"
 echo "  🖥️  Frontend:  http://localhost:8080"
-echo "  🖼️  VNC:       http://localhost:6080/vnc.html"
+echo ""
+echo "  Multi-Session Mode:"
+echo "  -------------------"
+echo "  Each session gets its own VNC port:"
+echo "  - Session 1: http://localhost:6081/vnc.html"
+echo "  - Session 2: http://localhost:6082/vnc.html"
+echo "  - etc."
+echo ""
+echo "  The vnc_url in API responses shows the correct URL"
+echo "  for each session's isolated desktop."
 echo ""
 echo "  Set ANTHROPIC_API_KEY environment variable"
 echo "  to enable agent functionality."

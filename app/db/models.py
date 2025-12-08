@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -119,6 +119,25 @@ class Session(Base):
         Text,
         nullable=True,
         doc="Custom instructions appended to system prompt",
+    )
+    
+    # Display configuration (for multi-session isolation)
+    display_num: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="X11 display number (e.g., 1 for DISPLAY=:1)",
+    )
+    
+    vnc_port: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="VNC server port for this session",
+    )
+    
+    novnc_port: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        doc="noVNC web interface port for this session",
     )
     
     # Timestamps

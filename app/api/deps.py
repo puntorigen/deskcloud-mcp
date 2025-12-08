@@ -81,12 +81,39 @@ ValidSessionDep = Annotated[DBSession, Depends(get_valid_session)]
 # Utility Dependencies
 # =============================================================================
 
-def get_vnc_url() -> str:
+def get_vnc_url(session: DBSession | None = None) -> str:
     """
-    Get the VNC viewer URL from configuration.
+    Get the VNC viewer URL for a session.
     
-    In production with reverse proxy, this would be a relative URL.
+    If session has display info, returns the session-specific noVNC URL.
+    Otherwise, falls back to the default VNC URL from settings.
+    
+    Args:
+        session: Optional session with display info
+    
+    Returns:
+        noVNC web URL for VNC access
     """
     from app.config import settings
+    
+    # If session has a dedicated display, return its specific VNC URL
+    if session and session.novnc_port:
+        return f"http://{settings.vnc_host}:{session.novnc_port}/vnc.html"
+    
+    # Fallback to default VNC URL
     return settings.vnc_base_url
+
+
+def get_session_vnc_url(session_id: str) -> str | None:
+    """
+    Get VNC URL for a session from the display manager.
+    
+    Args:
+        session_id: Session identifier
+    
+    Returns:
+        noVNC URL or None if no display exists
+    """
+    from app.services.display_manager import display_manager
+    return display_manager.get_vnc_url(session_id)
 

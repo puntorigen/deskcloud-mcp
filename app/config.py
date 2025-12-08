@@ -74,15 +74,24 @@ class Settings(BaseSettings):
     # VNC Configuration
     # ==========================================================================
     
-    # Display number for X11 virtual framebuffer
-    display_num: int = 1
-    
-    # Screen dimensions
+    # Screen dimensions for virtual displays
     screen_width: int = 1024
     screen_height: int = 768
     
-    # VNC URL template (used in session responses)
+    # VNC server base port (display :N uses port vnc_base_port + N)
+    vnc_base_port: int = 5900
+    
+    # noVNC web interface base port (display :N uses port novnc_base_port + N)
+    novnc_base_port: int = 6080
+    
+    # Hostname for VNC URLs (used in session responses)
+    vnc_host: str = "localhost"
+    
+    # Legacy VNC URL (for single-display mode, kept for backwards compatibility)
     vnc_base_url: str = "http://localhost:6080/vnc.html"
+    
+    # Maximum concurrent displays (0 = unlimited)
+    max_displays: int = 20
     
     # ==========================================================================
     # Rate Limiting

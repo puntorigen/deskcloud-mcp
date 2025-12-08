@@ -496,13 +496,23 @@ class ComputerUseApp {
     // =========================================================================
 
     /**
-     * Load VNC viewer.
-     * @param {string} vncUrl - VNC URL from session
+     * Load VNC viewer for a session's isolated desktop.
+     * 
+     * Multi-Session Architecture:
+     * Each session has its own X11 display and VNC port.
+     * The vnc_url in the session response points to the session's
+     * dedicated noVNC instance.
+     * 
+     * @param {string} vncUrl - Session-specific VNC URL from API
      */
     loadVnc(vncUrl) {
         if (vncUrl) {
+            // Update iframe to session's isolated desktop
             this.vncIframe.src = vncUrl;
             this.vncPlaceholder.classList.add('hidden');
+            
+            // Log VNC connection for debugging
+            console.log(`VNC connected to: ${vncUrl}`);
         }
     }
 

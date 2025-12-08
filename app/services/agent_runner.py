@@ -89,6 +89,7 @@ class AgentRunner:
         api_key: API key for the provider
         system_prompt_suffix: Custom instructions
         messages: Conversation history (mutable - updated by loop)
+        display_env: DISPLAY environment for isolated X11 desktop
         event_queue: Queue for streaming events to SSE
         _task: Background task running the agent loop
     
@@ -97,6 +98,7 @@ class AgentRunner:
             session_id="sess_123",
             model="claude-sonnet-4-5-20250929",
             messages=[],
+            display_env={"DISPLAY": ":1"},
         )
         queue = await runner.run("Search the weather in Dubai")
         
@@ -114,6 +116,7 @@ class AgentRunner:
     tool_version: str = "computer_use_20250124"  # Default for Claude 4.5
     max_tokens: int = 16384
     thinking_budget: int | None = None
+    display_env: dict[str, str] | None = None  # DISPLAY env for isolated desktop
     
     # Internal state
     event_queue: asyncio.Queue[Event] = field(default_factory=asyncio.Queue)
@@ -262,7 +265,17 @@ class AgentRunner:
         
         Handles the actual integration with Anthropic's code.
         Emits completion event when done (success or error).
+        
+        Note: Sets DISPLAY environment variable if display_env is provided.
+        This is necessary for isolated X11 desktops per session.
         """
+        import os
+        
+        # Set display environment for this session's isolated desktop
+        original_display = os.environ.get("DISPLAY")
+        if self.display_env and "DISPLAY" in self.display_env:
+            os.environ["DISPLAY"] = self.display_env["DISPLAY"]
+        
         try:
             if not ANTHROPIC_DEMO_AVAILABLE:
                 # Mock response for testing without the demo
@@ -315,6 +328,14 @@ class AgentRunner:
                 status="error",
             )
             self._queue_event(complete_event)
+        
+        finally:
+            # Restore original DISPLAY environment
+            if original_display is not None:
+                os.environ["DISPLAY"] = original_display
+            elif "DISPLAY" in os.environ and self.display_env:
+                # We set it but there was no original, remove it
+                del os.environ["DISPLAY"]
     
     async def _run_mock_loop(self) -> None:
         """

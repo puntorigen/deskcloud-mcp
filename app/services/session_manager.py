@@ -28,6 +28,7 @@ from app.db.repositories import SessionRepository
 from app.db.session import get_db_context
 
 from .agent_runner import AgentRunner
+from .display_manager import display_manager
 
 
 @dataclass
@@ -97,7 +98,7 @@ class SessionManager:
         system_prompt_suffix: str | None = None,
     ) -> DBSession:
         """
-        Create a new chat session.
+        Create a new chat session with an isolated display.
         
         Args:
             repo: Session repository for database access
@@ -107,18 +108,38 @@ class SessionManager:
             system_prompt_suffix: Custom system prompt addition
         
         Returns:
-            Created DBSession instance
+            Created DBSession instance with display info
         """
         # Use defaults from settings if not provided
         model = model or settings.default_model
         
-        # Create in database
+        # Create in database (without display info initially)
         session = await repo.create_session(
             model=model,
             provider=provider,
             title=title,
             system_prompt_suffix=system_prompt_suffix,
         )
+        
+        # Create isolated display for this session
+        try:
+            display_info = await display_manager.create_display(session.id)
+            
+            # Update session with display information
+            await repo.update_session_display(
+                session_id=session.id,
+                display_num=display_info.display_num,
+                vnc_port=display_info.vnc_port,
+                novnc_port=display_info.novnc_port,
+            )
+            
+            # Refresh session to get updated display info
+            session = await repo.get_session(session.id, include_messages=False)
+            
+        except Exception as e:
+            # Log the error but don't fail session creation
+            # The session can still work without a display for testing
+            print(f"Warning: Could not create display for session {session.id}: {e}")
         
         # Track as active
         async with self._lock:
@@ -151,9 +172,10 @@ class SessionManager:
         session_id: str,
     ) -> bool:
         """
-        Archive (soft-delete) a session.
+        Archive (soft-delete) a session and cleanup its display.
         
-        Cancels any running agent and removes from active tracking.
+        Cancels any running agent, destroys the display, and removes
+        from active tracking.
         
         Args:
             repo: Session repository
@@ -169,6 +191,9 @@ class SessionManager:
                 if active.runner:
                     await active.runner.cancel()
                 del self._active_sessions[session_id]
+        
+        # Destroy the display for this session
+        await display_manager.destroy_display(session_id)
         
         # Archive in database
         return await repo.delete_session(session_id)
@@ -226,6 +251,9 @@ class SessionManager:
         # Determine tool version based on model
         tool_version = self._get_tool_version(session.model)
         
+        # Get display environment for this session
+        display_env = display_manager.get_display_env(session.id)
+        
         # Create and configure agent runner
         runner = AgentRunner(
             session_id=session.id,
@@ -234,6 +262,7 @@ class SessionManager:
             system_prompt_suffix=session.system_prompt_suffix or "",
             messages=messages,
             tool_version=tool_version,
+            display_env=display_env,
         )
         
         # Track the runner

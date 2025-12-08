@@ -165,6 +165,39 @@ class SessionRepository:
         """
         return await self.update_session_status(session_id, SessionStatus.ARCHIVED)
     
+    async def update_session_display(
+        self,
+        session_id: str,
+        display_num: int,
+        vnc_port: int,
+        novnc_port: int,
+    ) -> bool:
+        """
+        Update a session's display configuration.
+        
+        Called after creating an isolated X11 display for the session.
+        
+        Args:
+            session_id: Session to update
+            display_num: X11 display number (e.g., 1 for :1)
+            vnc_port: VNC server port
+            novnc_port: noVNC web interface port
+        
+        Returns:
+            True if session was found and updated
+        """
+        result = await self.db.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(
+                display_num=display_num,
+                vnc_port=vnc_port,
+                novnc_port=novnc_port,
+                updated_at=datetime.utcnow(),
+            )
+        )
+        return result.rowcount > 0
+    
     # =========================================================================
     # Message Operations
     # =========================================================================

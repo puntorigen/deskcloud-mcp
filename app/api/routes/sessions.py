@@ -53,13 +53,18 @@ async def create_session(
     repo: SessionRepoDep,
 ) -> SessionResponse:
     """
-    Create a new chat session.
+    Create a new chat session with isolated desktop.
     
-    Creates an isolated session with its own conversation history
-    and configuration. The session can then receive messages and
-    stream agent responses via SSE.
+    Creates an isolated session with its own:
+    - Conversation history
+    - Configuration
+    - X11 display (virtual desktop)
+    - VNC connection
     
-    Returns the created session with VNC URL for desktop viewing.
+    The session can then receive messages and stream agent responses via SSE.
+    Each session has its own VNC URL for independent desktop viewing.
+    
+    Returns the created session with session-specific VNC URL.
     """
     session = await session_manager.create_session(
         repo=repo,
@@ -77,7 +82,7 @@ async def create_session(
         provider=session.provider,
         created_at=session.created_at,
         updated_at=session.updated_at,
-        vnc_url=get_vnc_url(),
+        vnc_url=get_vnc_url(session),  # Session-specific VNC URL
     )
 
 
@@ -106,6 +111,7 @@ async def list_sessions(
     List all sessions with optional filtering.
     
     Returns sessions ordered by creation date (newest first).
+    Each session includes its own VNC URL for isolated desktop access.
     Supports pagination via limit/offset parameters.
     """
     sessions = await repo.list_sessions(
@@ -114,7 +120,7 @@ async def list_sessions(
         offset=offset,
     )
     
-    # Convert to response models
+    # Convert to response models with session-specific VNC URLs
     session_responses = [
         SessionResponse(
             id=s.id,
@@ -124,7 +130,7 @@ async def list_sessions(
             provider=s.provider,
             created_at=s.created_at,
             updated_at=s.updated_at,
-            vnc_url=get_vnc_url(),
+            vnc_url=get_vnc_url(s),  # Session-specific VNC URL
         )
         for s in sessions
     ]
@@ -149,6 +155,7 @@ async def get_session(
     
     Returns all messages in chronological order, including
     user messages, assistant responses, and tool results.
+    Includes session-specific VNC URL for isolated desktop viewing.
     """
     # Convert messages to response format
     messages = [
@@ -170,7 +177,7 @@ async def get_session(
         provider=session.provider,
         created_at=session.created_at,
         updated_at=session.updated_at,
-        vnc_url=get_vnc_url(),
+        vnc_url=get_vnc_url(session),  # Session-specific VNC URL
         system_prompt_suffix=session.system_prompt_suffix,
         messages=messages,
     )

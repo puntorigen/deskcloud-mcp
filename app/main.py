@@ -26,6 +26,7 @@ from slowapi.util import get_remote_address
 from app.api.routes import api_router
 from app.config import settings
 from app.db import init_db
+from app.services import display_manager
 
 
 # =============================================================================
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     Handles startup and shutdown events:
     - Startup: Initialize database, warm up connections
-    - Shutdown: Clean up resources, close connections
+    - Shutdown: Clean up resources, close connections, shutdown displays
     """
     # Startup
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
@@ -51,6 +52,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print(f"📦 API Provider: {settings.api_provider}")
     print(f"🤖 Default Model: {settings.default_model}")
     print(f"🗄️  Database: {settings.database_url.split('://')[0]}")
+    
+    # Log multi-session architecture info
+    print(f"🖥️  Multi-Session Mode: Enabled")
+    print(f"   VNC base port: {settings.vnc_base_port}")
+    print(f"   noVNC base port: {settings.novnc_base_port}")
+    print(f"   Max displays: {settings.max_displays or 'unlimited'}")
     
     # Check API key
     if settings.anthropic_api_key.get_secret_value():
@@ -64,6 +71,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Shutdown
     print("👋 Shutting down...")
+    
+    # Clean up all active displays
+    active_count = display_manager.active_display_count
+    if active_count > 0:
+        print(f"🖥️  Cleaning up {active_count} active display(s)...")
+        await display_manager.shutdown()
+        print("   All displays shut down")
 
 
 # =============================================================================
