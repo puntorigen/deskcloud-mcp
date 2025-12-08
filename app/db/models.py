@@ -156,6 +156,15 @@ class Session(Base):
         doc="Last modification timestamp",
     )
     
+    # Last activity timestamp for TTL tracking
+    last_activity: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+        doc="Last user activity timestamp (for session TTL)",
+    )
+    
     # Relationships
     messages: Mapped[list["Message"]] = relationship(
         "Message",

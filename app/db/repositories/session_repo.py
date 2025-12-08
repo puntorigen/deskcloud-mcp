@@ -333,4 +333,51 @@ class SessionRepository:
         )
         
         return created
+    
+    # =========================================================================
+    # Session TTL Operations
+    # =========================================================================
+    
+    async def update_last_activity(self, session_id: str) -> bool:
+        """
+        Update a session's last_activity timestamp.
+        
+        Called when user interacts with a session to reset TTL countdown.
+        
+        Args:
+            session_id: Session to update
+        
+        Returns:
+            True if session was found and updated
+        """
+        result = await self.db.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(last_activity=datetime.utcnow())
+        )
+        return result.rowcount > 0
+    
+    async def get_sessions_inactive_since(
+        self,
+        cutoff: datetime,
+    ) -> Sequence[Session]:
+        """
+        Get sessions that haven't had activity since the cutoff time.
+        
+        Used by the cleanup service to find expired sessions.
+        
+        Args:
+            cutoff: Datetime threshold - sessions with last_activity before this are returned
+        
+        Returns:
+            List of inactive Session instances
+        """
+        query = (
+            select(Session)
+            .where(Session.status != SessionStatus.ARCHIVED)
+            .where(Session.last_activity < cutoff)
+        )
+        
+        result = await self.db.execute(query)
+        return result.scalars().all()
 

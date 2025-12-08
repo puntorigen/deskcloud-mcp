@@ -8,6 +8,7 @@ FastAPI route modules for different API resources.
 from fastapi import APIRouter
 
 from .health import router as health_router
+from .llms import router as llms_router
 from .sessions import router as sessions_router
 
 # =============================================================================
@@ -28,5 +29,13 @@ api_router.include_router(
     tags=["Sessions"],
 )
 
-__all__ = ["api_router"]
+# =============================================================================
+# Root-Level Routes (outside /api/v1)
+# =============================================================================
+
+# LLMs.txt is served at root level, not under /api/v1
+# It's included here but will be mounted separately in main.py
+llms_router_export = llms_router
+
+__all__ = ["api_router", "llms_router_export"]
 

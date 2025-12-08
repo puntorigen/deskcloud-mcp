@@ -242,6 +242,9 @@ class SessionManager:
             content=content,  # Simple string for user messages
         )
         
+        # Update last_activity for TTL tracking
+        await repo.update_last_activity(session.id)
+        
         # Update session status
         await repo.update_session_status(session.id, SessionStatus.PROCESSING)
         

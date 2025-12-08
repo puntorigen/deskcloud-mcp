@@ -94,6 +94,26 @@ class Settings(BaseSettings):
     max_displays: int = 20
     
     # ==========================================================================
+    # Session TTL & Cleanup
+    # ==========================================================================
+    
+    # Session time-to-live in seconds (default: 1 hour)
+    session_ttl_seconds: int = 3600
+    
+    # Cleanup check interval in seconds (default: 5 minutes)
+    cleanup_interval_seconds: int = 300
+    
+    # Extended TTL for authenticated users (future use)
+    extended_ttl_seconds: int = 86400  # 24 hours
+    
+    # ==========================================================================
+    # MCP Server Configuration
+    # ==========================================================================
+    
+    # Enable MCP server
+    mcp_enabled: bool = True
+    
+    # ==========================================================================
     # Rate Limiting
     # ==========================================================================
     

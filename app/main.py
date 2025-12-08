@@ -3,7 +3,7 @@ FastAPI Application Entry Point
 ===============================
 
 Main application factory and configuration.
-Sets up middleware, routes, and lifecycle events.
+Sets up middleware, routes, lifecycle events, and MCP server.
 
 Usage:
     # Development
@@ -13,6 +13,7 @@ Usage:
     uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -23,10 +24,13 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.routes import api_router
+from app.api.routes import api_router, llms_router_export
 from app.config import settings
 from app.db import init_db
 from app.services import display_manager
+from app.services.session_cleanup import cleanup_service
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -39,8 +43,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Application lifespan manager.
     
     Handles startup and shutdown events:
-    - Startup: Initialize database, warm up connections
-    - Shutdown: Clean up resources, close connections, shutdown displays
+    - Startup: Initialize database, start cleanup service, warm up connections
+    - Shutdown: Stop cleanup, clean up resources, shutdown displays
     """
     # Startup
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
@@ -59,18 +63,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print(f"   noVNC base port: {settings.novnc_base_port}")
     print(f"   Max displays: {settings.max_displays or 'unlimited'}")
     
+    # Log MCP server info
+    if settings.mcp_enabled:
+        print(f"🔌 MCP Server: Enabled at /mcp")
+        print(f"   Session TTL: {settings.session_ttl_seconds}s")
+        print(f"   Cleanup interval: {settings.cleanup_interval_seconds}s")
+    
     # Check API key
     if settings.anthropic_api_key.get_secret_value():
         print("🔑 API Key: Configured")
     else:
         print("⚠️  API Key: NOT CONFIGURED - Set ANTHROPIC_API_KEY env var")
     
+    # Start session cleanup service
+    await cleanup_service.start()
+    
     print(f"✅ Ready to accept requests on {settings.api_v1_prefix}")
+    print(f"📄 LLMs.txt available at /llms.txt")
     
     yield
     
     # Shutdown
     print("👋 Shutting down...")
+    
+    # Stop cleanup service
+    await cleanup_service.stop()
     
     # Clean up all active displays
     active_count = display_manager.active_display_count
@@ -199,6 +216,27 @@ Set your Claude API key via `ANTHROPIC_API_KEY` environment variable.
     
     # Include all API routes under /api/v1
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    
+    # Mount llms.txt at root level (not under /api/v1)
+    app.include_router(llms_router_export)
+    
+    # =========================================================================
+    # MCP Server
+    # =========================================================================
+    
+    if settings.mcp_enabled:
+        try:
+            from app.mcp import create_mcp_app
+            
+            # Mount MCP server at /mcp
+            mcp_app = create_mcp_app()
+            app.mount("/mcp", mcp_app)
+            
+            logger.info("MCP server mounted at /mcp")
+        except ImportError as e:
+            logger.warning(f"MCP server not available: {e}")
+        except Exception as e:
+            logger.error(f"Failed to mount MCP server: {e}")
     
     # Root redirect to docs
     @app.get("/", include_in_schema=False)
