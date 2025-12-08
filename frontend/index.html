@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Computer Use</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- ================================================================== -->
+    <!-- Header -->
+    <!-- ================================================================== -->
+    <header class="header">
+        <div class="header__brand">
+            <svg class="header__logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <h1 class="header__title">Claude Computer Use</h1>
+        </div>
+        <div class="header__actions">
+            <span id="connection-status" class="status-badge status-badge--disconnected">
+                <span class="status-badge__dot"></span>
+                <span class="status-badge__text">Disconnected</span>
+            </span>
+            <button id="new-session-btn" class="btn btn--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                New Session
+            </button>
+        </div>
+    </header>
+
+    <!-- ================================================================== -->
+    <!-- Main Content -->
+    <!-- ================================================================== -->
+    <main class="main">
+        <!-- Session List Panel -->
+        <aside class="panel panel--sessions">
+            <div class="panel__header">
+                <h2 class="panel__title">Sessions</h2>
+                <button id="refresh-sessions-btn" class="btn btn--icon" title="Refresh sessions">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                        <path d="M21 3v5h-5"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="session-list" class="session-list">
+                <div class="session-list__empty">
+                    <p>No sessions yet</p>
+                    <p class="text-muted">Create a new session to get started</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- VNC Viewer Panel -->
+        <section class="panel panel--vnc">
+            <div class="panel__header">
+                <h2 class="panel__title">Virtual Desktop</h2>
+                <div class="panel__actions">
+                    <button id="vnc-fullscreen-btn" class="btn btn--icon" title="Fullscreen">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="vnc-container">
+                <iframe 
+                    id="vnc-iframe" 
+                    class="vnc-iframe"
+                    src="about:blank"
+                    title="Virtual Desktop VNC Viewer"
+                ></iframe>
+                <div id="vnc-placeholder" class="vnc-placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <p>Select a session to view the virtual desktop</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chat Panel -->
+        <section class="panel panel--chat">
+            <div class="panel__header">
+                <h2 class="panel__title">Chat</h2>
+                <span id="session-status" class="session-status"></span>
+            </div>
+            
+            <!-- Messages Container -->
+            <div id="messages-container" class="messages-container">
+                <div id="messages" class="messages">
+                    <div class="messages__empty">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        <p>Select a session to view messages</p>
+                        <p class="text-muted">Or create a new session to start chatting</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="chat-input">
+                <div class="chat-input__wrapper">
+                    <textarea 
+                        id="message-input" 
+                        class="chat-input__textarea"
+                        placeholder="Type a message to control the computer..."
+                        rows="1"
+                        disabled
+                    ></textarea>
+                    <button id="send-btn" class="btn btn--send" disabled title="Send message">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <p class="chat-input__hint">
+                    Press <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for new line
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <!-- ================================================================== -->
+    <!-- Modal for New Session -->
+    <!-- ================================================================== -->
+    <div id="new-session-modal" class="modal">
+        <div class="modal__backdrop"></div>
+        <div class="modal__content">
+            <div class="modal__header">
+                <h3 class="modal__title">Create New Session</h3>
+                <button class="modal__close" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <form id="new-session-form" class="modal__body">
+                <div class="form-group">
+                    <label for="session-title" class="form-label">Session Title</label>
+                    <input 
+                        type="text" 
+                        id="session-title" 
+                        class="form-input"
+                        placeholder="e.g., Search weather in Dubai"
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="session-model" class="form-label">Model</label>
+                    <select id="session-model" class="form-select">
+                        <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
+                        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Faster)</option>
+                        <option value="claude-opus-4-5-20251101">Claude Opus 4.5 (Most Capable)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="system-prompt" class="form-label">Custom Instructions (Optional)</label>
+                    <textarea 
+                        id="system-prompt" 
+                        class="form-textarea"
+                        placeholder="Additional instructions for the agent..."
+                        rows="3"
+                    ></textarea>
+                </div>
+            </form>
+            <div class="modal__footer">
+                <button type="button" class="btn btn--secondary modal__cancel">Cancel</button>
+                <button type="submit" form="new-session-form" class="btn btn--primary">Create Session</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- Toast Notifications -->
+    <!-- ================================================================== -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ================================================================== -->
+    <!-- Scripts -->
+    <!-- ================================================================== -->
+    <script src="js/api.js"></script>
+    <script src="js/sse.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
+
