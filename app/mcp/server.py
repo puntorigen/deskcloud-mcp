@@ -40,7 +40,6 @@ logger.info("MCP Server initialized with tools: %s", [
     "create_session",
     "execute_task", 
     "get_session_status",
-    "list_sessions",
     "destroy_session",
     "take_screenshot",
 ])

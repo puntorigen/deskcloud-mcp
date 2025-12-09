@@ -21,7 +21,7 @@ class MessageCreate(BaseModel):
     Example:
         POST /api/v1/sessions/{session_id}/messages
         {
-            "content": "Search the weather in Dubai"
+            "content": "Search the weather in Santiago, Chile"
         }
     """
     
@@ -29,7 +29,7 @@ class MessageCreate(BaseModel):
         min_length=1,
         max_length=10000,
         description="Message content to send to the agent",
-        examples=["Search the weather in Dubai", "Open Firefox and go to google.com"],
+        examples=["Search the weather in Santiago, Chile", "Open Firefox and go to google.com"],
     )
     
     @field_validator("content", mode="after")
@@ -47,7 +47,7 @@ class MessageCreate(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "content": "Search the weather in Dubai"
+                "content": "Search the weather in Santiago, Chile"
             }
         }
     )
@@ -74,7 +74,7 @@ class MessageResponse(BaseModel):
     content: str | list[dict[str, Any]] | dict[str, Any] = Field(
         description="Message content - string for user, structured for assistant",
         examples=[
-            "Search the weather in Dubai",
+            "Search the weather in Santiago, Chile",
             [{"type": "text", "text": "I'll help you search..."}],
         ],
     )
@@ -97,7 +97,7 @@ class MessageResponse(BaseModel):
             "example": {
                 "id": "msg_xyz789abc",
                 "role": "user",
-                "content": "Search the weather in Dubai",
+                "content": "Search the weather in Santiago, Chile",
                 "tool_use_id": None,
                 "timestamp": "2024-12-07T10:31:00Z",
             }

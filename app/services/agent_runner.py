@@ -100,7 +100,7 @@ class AgentRunner:
             messages=[],
             display_env={"DISPLAY": ":1"},
         )
-        queue = await runner.run("Search the weather in Dubai")
+        queue = await runner.run("Search the weather in Santiago, Chile")
         
         # Consume events from queue
         async for event in runner.iter_events():

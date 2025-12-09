@@ -1,47 +1,66 @@
 # Claude Computer Use Backend
 
-**Author:** Pablo Schaffner
-
-A production-ready FastAPI backend for managing Claude Computer Use agent sessions with real-time streaming, persistent storage, and VNC integration.
+A production-ready FastAPI backend for managing Claude Computer Use agent sessions with real-time streaming, persistent storage, VNC integration, and **MCP (Model Context Protocol) support**.
 
 ## 🎯 Overview
 
 This project transforms the Anthropic Computer Use demo from an experimental Streamlit interface into a scalable backend API with:
 
+- **Multi-Session Concurrency** - Each session gets an isolated virtual desktop
+- **MCP Server** - Connect from Cursor IDE or Claude Desktop via Model Context Protocol
 - **RESTful API** for session and message management
 - **Server-Sent Events (SSE)** for real-time agent updates
 - **SQLite/PostgreSQL** persistence for chat history
-- **VNC Integration** for watching agent actions
+- **VNC Integration** for watching agent actions per session
+- **Auto-Cleanup** - Sessions auto-destroy after 1 hour of inactivity
 - **Modern Frontend** with clean three-panel design
 
 ## 🏗️ Architecture
 
+### Multi-Session Support
+
+Each session gets its own **isolated X11 display**, enabling true concurrent usage:
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                              Docker Container                           │
+│                           Docker Container                               │
 ├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────┐    ┌────────────────────────────────────────────────┐ │
-│  │   noVNC     │◄───┤              Virtual Desktop (X11)             │ │
-│  │   :6080     │    │  Xvfb + Mutter + Firefox + Desktop Apps        │ │
-│  └─────────────┘    └────────────────────────────────────────────────┘ │
-│        ▲                              ▲                                 │
-│        │                              │ Tool Execution                  │
-│        │                              │                                 │
-│  ┌─────┴─────────────────────────────┴─────────────────────────────┐  │
-│  │                     FastAPI Backend (:8000)                      │  │
-│  │                                                                   │  │
-│  │  REST API          │  SSE Streaming    │  Session Manager        │  │
-│  │  /api/v1/sessions  │  Real-time events │  Agent orchestration    │  │
-│  └───────────────────────────────────────────────────────────────────┘ │
-│                              │                                         │
-└──────────────────────────────┼─────────────────────────────────────────┘
-                               │
-                        ┌──────▼──────┐
-                        │   SQLite    │
-                        │  (Sessions) │
-                        └─────────────┘
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                    FastAPI + MCP Server (:8000)                     │ │
+│  │                                                                      │ │
+│  │  /api/v1/*   REST API          │  /mcp   MCP Protocol (Cursor)     │ │
+│  │  /llms.txt   LLM Documentation │  /docs  Swagger UI                │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                              │                                           │
+│                    ┌─────────┴─────────┐                                │
+│                    │  Display Manager  │                                │
+│                    │  Session Manager  │                                │
+│                    └─────────┬─────────┘                                │
+│                              │                                           │
+│  ┌───────────────┬───────────┴───────────┬───────────────┐              │
+│  │   Session 1   │      Session 2        │   Session 3   │   ...        │
+│  │   Xvfb :1     │      Xvfb :2          │   Xvfb :3     │              │
+│  │   VNC :5901   │      VNC :5902        │   VNC :5903   │              │
+│  │   noVNC :6081 │      noVNC :6082      │   noVNC :6083 │              │
+│  │  ┌─────────┐  │     ┌─────────┐       │  ┌─────────┐  │              │
+│  │  │ Firefox │  │     │ Firefox │       │  │ Firefox │  │              │
+│  │  └─────────┘  │     └─────────┘       │  └─────────┘  │              │
+│  └───────────────┴───────────────────────┴───────────────┘              │
+│                                                                          │
+│  Each session: ~100MB RAM, 1-3 second startup                           │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Why Multi-Display?
+
+| Feature | Benefit |
+|---------|---------|
+| **Isolated Desktops** | Users don't interfere with each other |
+| **Persistent State** | Browser tabs, forms, files persist per session |
+| **Fast Startup** | 1-3 seconds (vs 10-30s for container orchestration) |
+| **Low Memory** | ~100MB per session (vs ~1GB for containers) |
+| **Render.com Ready** | No Docker socket needed |
 
 ## 🚀 Quick Start
 
@@ -76,8 +95,52 @@ docker-compose up -d --build
 |---------|-----|-------------|
 | **Frontend** | http://localhost:8080 | Web interface |
 | **API Docs** | http://localhost:8000/docs | Swagger documentation |
-| **VNC Viewer** | http://localhost:6080/vnc.html | Virtual desktop |
+| **MCP Server** | http://localhost:8000/mcp | Model Context Protocol endpoint |
+| **LLMs.txt** | http://localhost:8000/llms.txt | AI-readable documentation |
 | **API** | http://localhost:8000/api/v1 | REST endpoints |
+
+> **Note**: VNC URLs are now per-session. Each session returns its own `vnc_url` in the response.
+
+## 🔌 MCP Integration (Cursor / Claude Desktop)
+
+This server implements the **Model Context Protocol (MCP)**, allowing AI assistants to control the virtual desktop directly.
+
+### Configure Cursor IDE
+
+Add to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "computer-use": {
+      "url": "http://localhost:8000/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_session` | Create a new session with isolated desktop |
+| `execute_task` | Execute a task (long-running, agent controls desktop) |
+| `get_session_status` | Check session status and TTL remaining |
+| `destroy_session` | Manually destroy a session |
+| `take_screenshot` | Capture current desktop state |
+
+### Example Cursor Workflow
+
+```
+User: "Create a session and search for flights to Tokyo on Google"
+
+Cursor (via MCP):
+1. create_session() → gets session_id, vnc_url
+2. execute_task(session_id, "search for flights to Tokyo on Google")
+3. Agent opens Firefox, navigates, searches, returns results
+4. Session auto-destroys after 1 hour of inactivity
+```
 
 ## 📖 API Reference
 
@@ -117,7 +180,7 @@ POST /api/v1/sessions/{session_id}/messages
 Content-Type: application/json
 
 {
-    "content": "Search the weather in Dubai"
+    "content": "Search the weather in Santiago, Chile"
 }
 ```
 
@@ -150,10 +213,10 @@ GET /api/v1/config         # Configuration info
 
 ## 🎬 Usage Demo
 
-### Use Case 1: Weather Search (Dubai)
+### Use Case 1: Weather Search (Santiago, Chile)
 
 1. **Create a new session** via the "New Session" button
-2. **Enter the prompt**: "Search the weather in Dubai"
+2. **Enter the prompt**: "Search the weather in Santiago, Chile"
 3. **Watch** the agent:
    - Open Firefox
    - Navigate to Google
@@ -161,11 +224,14 @@ GET /api/v1/config         # Configuration info
    - Provide summarized results
 4. **View real-time progress** in the chat panel
 
-### Use Case 2: Weather Search (San Francisco)
+### Use Case 2: Concurrent Sessions
 
-1. **Create another session**
+1. **Create another session** (while Session 1 is still active)
 2. **Enter the prompt**: "Search the weather in San Francisco"
-3. **Verify** both sessions maintain separate histories
+3. **Both sessions run independently** with:
+   - Separate VNC viewers (different ports)
+   - Isolated browser state (tabs, cookies, history)
+   - Independent chat histories
 
 ## 🔧 Development
 
@@ -189,19 +255,25 @@ python -m http.server 8080 --directory frontend
 ### Project Structure
 
 ```
-backend/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # FastAPI application
+│   ├── main.py                 # FastAPI application + MCP mounting
 │   ├── config.py               # Configuration settings
 │   ├── api/
 │   │   ├── routes/
 │   │   │   ├── sessions.py     # Session CRUD & streaming
-│   │   │   └── health.py       # Health endpoints
+│   │   │   ├── health.py       # Health endpoints
+│   │   │   └── llms.py         # LLMs.txt endpoint
 │   │   ├── schemas/            # Pydantic models
 │   │   └── deps.py             # Dependencies
+│   ├── mcp/                    # MCP Server
+│   │   ├── __init__.py
+│   │   ├── server.py           # FastMCP setup
+│   │   └── tools.py            # MCP tool implementations
 │   ├── services/
 │   │   ├── session_manager.py  # Session orchestration
+│   │   ├── display_manager.py  # Multi-display management
+│   │   ├── session_cleanup.py  # Auto-cleanup service
 │   │   └── agent_runner.py     # Anthropic loop wrapper
 │   ├── db/
 │   │   ├── models.py           # SQLAlchemy models
@@ -219,7 +291,10 @@ backend/
 ├── docker/
 │   ├── Dockerfile
 │   └── entrypoint.sh
+├── docs/
+│   └── plans/                  # Architecture documentation
 ├── docker-compose.yml
+├── render.yaml                 # Render.com deployment
 ├── requirements.txt
 └── README.md
 ```
@@ -234,12 +309,29 @@ pip install pytest pytest-asyncio httpx
 pytest tests/ -v
 ```
 
+## ⏱️ Session Lifecycle & TTL
+
+Sessions automatically clean up to prevent resource exhaustion:
+
+```
+Create ──► Active ──► Idle (no activity) ──► Auto-Destroyed
+              │
+              └──► Processing ──► Active
+```
+
+- **Default TTL**: 1 hour of inactivity
+- **Cleanup Check**: Every 5 minutes
+- **Manual Cleanup**: Use `DELETE /api/v1/sessions/{id}` or MCP `destroy_session`
+- **Resource Usage**: ~100MB RAM per session
+
 ## 🔒 Security Considerations
 
 1. **API Key Protection**: Never expose `ANTHROPIC_API_KEY` to the frontend
-2. **Input Sanitization**: All user input is sanitized via Pydantic + bleach
-3. **Rate Limiting**: Configurable limits on API endpoints
-4. **CORS**: Restricted origins in production
+2. **Session Isolation**: Each session has isolated X11 display (no cross-session access)
+3. **No Session Enumeration**: `list_sessions` disabled in MCP for privacy (requires auth)
+4. **Input Sanitization**: All user input is sanitized via Pydantic + bleach
+5. **Rate Limiting**: Configurable limits on API endpoints
+6. **CORS**: Restricted origins in production
 
 ## 📊 Sequence Diagram
 
@@ -291,6 +383,10 @@ For Render.com deployment, use the single-port architecture with nginx proxying.
 | `ANTHROPIC_API_KEY` | Claude API key (required) | - |
 | `API_PROVIDER` | anthropic, bedrock, vertex | anthropic |
 | `DATABASE_URL` | Database connection string | sqlite |
+| `SESSION_TTL_SECONDS` | Session idle timeout | 3600 (1 hour) |
+| `CLEANUP_INTERVAL_SECONDS` | Cleanup check interval | 300 (5 min) |
+| `MCP_ENABLED` | Enable MCP server | true |
+| `MAX_DISPLAYS` | Max concurrent sessions | 20 |
 | `DEBUG` | Enable debug mode | false |
 | `CORS_ORIGINS` | Allowed CORS origins | localhost |
 
@@ -300,10 +396,12 @@ Detailed documentation for developers is available in the `docs/` folder:
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, layer architecture, data flow |
 | [API.md](docs/API.md) | Complete API reference with examples |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, layer architecture, data flow |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, code style, testing guide |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Render.com, production deployment |
+| [plans/multi_session_scaling.md](docs/plans/multi_session_scaling.md) | Multi-display architecture design |
+| [plans/mcp_server_transformation.md](docs/plans/mcp_server_transformation.md) | MCP server implementation plan |
 
 ## 📝 License
 

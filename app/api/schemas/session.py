@@ -73,7 +73,7 @@ class SessionCreate(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "title": "Search weather in Dubai",
+                "title": "Search weather in Santiago, Chile",
                 "model": "claude-sonnet-4-5-20250929",
                 "provider": "anthropic",
             }
@@ -165,7 +165,7 @@ class SessionListResponse(BaseModel):
                 "sessions": [
                     {
                         "id": "sess_abc123",
-                        "title": "Weather Dubai",
+                        "title": "Weather Santiago",
                         "status": "completed",
                         "model": "claude-sonnet-4-5-20250929",
                         "provider": "anthropic",
@@ -214,14 +214,14 @@ class SessionWithMessages(SessionResponse):
                     {
                         "id": "msg_001",
                         "role": "user",
-                        "content": "Search the weather in Dubai",
+                        "content": "Search the weather in Santiago, Chile",
                         "timestamp": "2024-12-07T10:31:00Z",
                     },
                     {
                         "id": "msg_002",
                         "role": "assistant",
                         "content": [
-                            {"type": "text", "text": "I'll search for Dubai weather..."}
+                            {"type": "text", "text": "I'll search for Santiago, Chile weather..."}
                         ],
                         "timestamp": "2024-12-07T10:31:05Z",
                     },

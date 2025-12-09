@@ -138,7 +138,7 @@ GET /sessions/{session_id}
         {
             "id": "msg_001",
             "role": "user",
-            "content": "Search the weather in Dubai",
+            "content": "Search the weather in Santiago, Chile",
             "tool_use_id": null,
             "timestamp": "2024-12-07T10:31:00Z"
         },
@@ -146,7 +146,7 @@ GET /sessions/{session_id}
             "id": "msg_002",
             "role": "assistant",
             "content": [
-                {"type": "text", "text": "I'll search for Dubai weather..."},
+                {"type": "text", "text": "I'll search for Santiago, Chile weather..."},
                 {"type": "tool_use", "id": "toolu_123", "name": "computer", "input": {...}}
             ],
             "tool_use_id": null,
@@ -199,7 +199,7 @@ Content-Type: application/json
 
 ```json
 {
-    "content": "Search the weather in Dubai"
+    "content": "Search the weather in Santiago, Chile"
 }
 ```
 
@@ -246,7 +246,7 @@ data: {"message_id": "msg_xyz789", "timestamp": "2024-12-07T10:31:00Z"}
 Text content from the agent.
 ```
 event: text
-data: {"content": "I'll search for the weather in Dubai...", "timestamp": "..."}
+data: {"content": "I'll search for the weather in Santiago, Chile...", "timestamp": "..."}
 ```
 
 #### `thinking`

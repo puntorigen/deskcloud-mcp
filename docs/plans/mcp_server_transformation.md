@@ -164,9 +164,10 @@ Cursor (via MCP):
 | `create_session` | Create new computer-use session | No |
 | `execute_task` | Execute a task in a session | Yes |
 | `get_session_status` | Get session status | No |
-| `list_sessions` | List all sessions | No |
 | `destroy_session` | Destroy a session | No |
 | `take_screenshot` | Capture session desktop | No |
+
+> **Note**: `list_sessions` is intentionally disabled for security. Users should track their own `session_id` values. This will be enabled with authentication in Phase 4.
 
 ### Tool Specifications
 

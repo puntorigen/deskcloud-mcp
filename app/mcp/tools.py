@@ -319,50 +319,16 @@ def register_tools(mcp: FastMCP) -> None:
             }
     
     # =========================================================================
-    # Tool: list_sessions
+    # Tool: list_sessions (DISABLED - requires authentication)
     # =========================================================================
-    
-    @mcp.tool()
-    async def list_sessions(include_archived: bool = False) -> dict[str, Any]:
-        """
-        List all computer-use sessions.
-        
-        Returns active sessions by default. Set include_archived=True
-        to also see destroyed/archived sessions.
-        
-        Args:
-            include_archived: Include destroyed sessions in results (default: False)
-        
-        Returns:
-            sessions: List of session summaries with id, title, status, created_at
-            total: Total count of sessions returned
-        """
-        logger.debug(f"MCP: Listing sessions (include_archived={include_archived})")
-        
-        async with get_db_context() as db:
-            repo = SessionRepository(db)
-            
-            sessions = await repo.list_sessions(
-                include_archived=include_archived,
-                limit=100,
-            )
-            
-            session_list = []
-            for s in sessions:
-                vnc_url = display_manager.get_vnc_url(s.id)
-                session_list.append({
-                    "session_id": s.id,
-                    "title": s.title,
-                    "status": s.status.value,
-                    "model": s.model,
-                    "created_at": s.created_at.isoformat(),
-                    "vnc_url": vnc_url,
-                })
-            
-            return {
-                "sessions": session_list,
-                "total": len(session_list),
-            }
+    # 
+    # NOTE: list_sessions is intentionally not exposed via MCP for security.
+    # Listing all sessions would expose information about other users' sessions.
+    # This will be enabled in Phase 4 when API key authentication is added,
+    # and will only return sessions belonging to the authenticated user.
+    #
+    # For now, users should track their own session_ids returned by create_session.
+    # Admins can use the REST API with future authentication.
     
     # =========================================================================
     # Tool: destroy_session

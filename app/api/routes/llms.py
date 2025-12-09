@@ -40,7 +40,7 @@ For Cursor IDE, add to `.cursor/mcp.json`:
 }
 ```
 
-## Available Tools
+## Available Tools (5)
 
 ### create_session
 Create a new computer-use session with isolated virtual desktop.
@@ -61,11 +61,6 @@ Get current status of a session.
 - `session_id` (required, string): Session to check
 - Returns: `status`, `title`, `model`, `vnc_url`, `message_count`, `last_activity`, `ttl_remaining_seconds`
 
-### list_sessions
-List all active sessions.
-- `include_archived` (optional, boolean): Include destroyed sessions (default: false)
-- Returns: `sessions` (array), `total` (count)
-
 ### destroy_session
 Destroy a session and free resources.
 - `session_id` (required, string): Session to destroy
@@ -82,6 +77,7 @@ Capture current state of session's desktop.
 - Use `destroy_session` to manually clean up when done
 - Each session uses ~100MB RAM (Xvfb + browser)
 - Max concurrent sessions depends on server resources
+- **Important**: Keep track of your `session_id` from `create_session` - there is no list_sessions tool for security reasons
 
 ## Example Workflow
 

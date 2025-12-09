@@ -514,7 +514,7 @@
 							"status": "OK",
 							"code": 200,
 							"_postman_previewlanguage": "json",
-							"body": "{\n    \"id\": \"sess_abc123\",\n    \"title\": \"Weather Search Task\",\n    \"status\": \"active\",\n    \"model\": \"claude-sonnet-4-5-20250929\",\n    \"provider\": \"anthropic\",\n    \"created_at\": \"2024-12-07T10:30:00Z\",\n    \"updated_at\": \"2024-12-07T10:35:00Z\",\n    \"vnc_url\": \"http://localhost:6080/vnc.html\",\n    \"system_prompt_suffix\": null,\n    \"messages\": [\n        {\n            \"id\": \"msg_001\",\n            \"role\": \"user\",\n            \"content\": \"Search the weather in Dubai\",\n            \"tool_use_id\": null,\n            \"timestamp\": \"2024-12-07T10:31:00Z\"\n        }\n    ]\n}"
+							"body": "{\n    \"id\": \"sess_abc123\",\n    \"title\": \"Weather Search Task\",\n    \"status\": \"active\",\n    \"model\": \"claude-sonnet-4-5-20250929\",\n    \"provider\": \"anthropic\",\n    \"created_at\": \"2024-12-07T10:30:00Z\",\n    \"updated_at\": \"2024-12-07T10:35:00Z\",\n    \"vnc_url\": \"http://localhost:6080/vnc.html\",\n    \"system_prompt_suffix\": null,\n    \"messages\": [\n        {\n            \"id\": \"msg_001\",\n            \"role\": \"user\",\n            \"content\": \"Search the weather in Santiago, Chile\",\n            \"tool_use_id\": null,\n            \"timestamp\": \"2024-12-07T10:31:00Z\"\n        }\n    ]\n}"
 						},
 						{
 							"name": "Session Not Found",
