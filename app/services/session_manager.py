@@ -29,6 +29,7 @@ from app.db.session import get_db_context
 
 from .agent_runner import AgentRunner
 from .display_manager import display_manager
+from .filesystem_manager import filesystem_manager
 
 
 @dataclass
@@ -98,7 +99,7 @@ class SessionManager:
         system_prompt_suffix: str | None = None,
     ) -> DBSession:
         """
-        Create a new chat session with an isolated display.
+        Create a new chat session with isolated display and filesystem.
         
         Args:
             repo: Session repository for database access
@@ -121,8 +122,19 @@ class SessionManager:
             system_prompt_suffix=system_prompt_suffix,
         )
         
+        # Create isolated filesystem for this session
+        fs_info = None
+        if settings.filesystem_isolation_enabled:
+            try:
+                fs_info = await filesystem_manager.create_filesystem(session.id)
+                print(f"✅ Filesystem created for session {session.id}")
+            except Exception as e:
+                # Log the error but don't fail session creation
+                print(f"Warning: Could not create filesystem for session {session.id}: {e}")
+        
         # Create isolated display for this session
         try:
+            # Pass filesystem paths to display manager for environment setup
             display_info = await display_manager.create_display(session.id)
             
             # Update session with display information
@@ -172,10 +184,10 @@ class SessionManager:
         session_id: str,
     ) -> bool:
         """
-        Archive (soft-delete) a session and cleanup its display.
+        Archive (soft-delete) a session and cleanup its display and filesystem.
         
-        Cancels any running agent, destroys the display, and removes
-        from active tracking.
+        Cancels any running agent, destroys the display and filesystem,
+        and removes from active tracking.
         
         Args:
             repo: Session repository
@@ -194,6 +206,10 @@ class SessionManager:
         
         # Destroy the display for this session
         await display_manager.destroy_display(session_id)
+        
+        # Destroy the filesystem for this session
+        if settings.filesystem_isolation_enabled:
+            await filesystem_manager.destroy_filesystem(session_id)
         
         # Archive in database
         return await repo.delete_session(session_id)
@@ -255,7 +271,15 @@ class SessionManager:
         tool_version = self._get_tool_version(session.model)
         
         # Get display environment for this session
-        display_env = display_manager.get_display_env(session.id)
+        display_env = display_manager.get_display_env(session.id) or {}
+        
+        # Get filesystem environment for this session
+        filesystem_env = {}
+        if settings.filesystem_isolation_enabled:
+            filesystem_env = filesystem_manager.get_filesystem_env(session.id) or {}
+        
+        # Merge display and filesystem environments
+        session_env = {**display_env, **filesystem_env}
         
         # Create and configure agent runner
         runner = AgentRunner(
@@ -265,7 +289,7 @@ class SessionManager:
             system_prompt_suffix=session.system_prompt_suffix or "",
             messages=messages,
             tool_version=tool_version,
-            display_env=display_env,
+            display_env=session_env,
         )
         
         # Track the runner

@@ -30,9 +30,10 @@ LABEL version="1.0.0"
 
 USER root
 
-# Install nginx for reverse proxy (optional, for production)
+# Install nginx for reverse proxy and zstd for filesystem snapshots
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
+    zstd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -80,8 +81,28 @@ ENV PYTHONUNBUFFERED=1
 # Database (SQLite by default, can be overridden to PostgreSQL)
 ENV DATABASE_URL=sqlite+aiosqlite:///./data/sessions.db
 
+# Filesystem isolation settings
+ENV SESSIONS_DIR=/sessions
+ENV FILESYSTEM_BASE_DIR=/sessions/base
+ENV FILESYSTEM_ISOLATION_ENABLED=true
+
 # Create data directory for SQLite
 RUN mkdir -p /home/computeruse/data
+
+# Create sessions directory structure for filesystem isolation
+# This needs to be done as root for OverlayFS support
+USER root
+RUN mkdir -p /sessions/base/home/user/.config \
+    && mkdir -p /sessions/base/home/user/.local/share \
+    && mkdir -p /sessions/base/home/user/.cache \
+    && mkdir -p /sessions/base/home/user/Desktop \
+    && mkdir -p /sessions/base/home/user/Downloads \
+    && mkdir -p /sessions/base/tmp \
+    && mkdir -p /sessions/active \
+    && mkdir -p /sessions/snapshots \
+    && chmod 1777 /sessions/base/tmp \
+    && chown -R computeruse:computeruse /sessions
+USER computeruse
 
 # ==============================================================================
 # Ports

@@ -107,6 +107,22 @@ class Settings(BaseSettings):
     extended_ttl_seconds: int = 86400  # 24 hours
     
     # ==========================================================================
+    # Filesystem Isolation Configuration
+    # ==========================================================================
+    
+    # Base directory for session filesystems
+    sessions_dir: str = "/sessions"
+    
+    # Base filesystem template (read-only layer for OverlayFS)
+    filesystem_base_dir: str = "/sessions/base"
+    
+    # Enable filesystem isolation (requires OverlayFS or falls back to copy)
+    filesystem_isolation_enabled: bool = True
+    
+    # Per-session disk quota in MB (0 = unlimited)
+    session_disk_quota_mb: int = 500
+    
+    # ==========================================================================
     # MCP Server Configuration
     # ==========================================================================
     

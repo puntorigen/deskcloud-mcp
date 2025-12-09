@@ -27,7 +27,7 @@ from slowapi.util import get_remote_address
 from app.api.routes import api_router, llms_router_export
 from app.config import settings
 from app.db import init_db
-from app.services import display_manager
+from app.services import display_manager, filesystem_manager
 from app.services.session_cleanup import cleanup_service
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print(f"   noVNC base port: {settings.novnc_base_port}")
     print(f"   Max displays: {settings.max_displays or 'unlimited'}")
     
+    # Initialize filesystem isolation
+    if settings.filesystem_isolation_enabled:
+        print(f"📁 Filesystem Isolation: Enabled")
+        await filesystem_manager.initialize_base_filesystem()
+        print(f"   Sessions dir: {settings.sessions_dir}")
+        print(f"   Base dir: {settings.filesystem_base_dir}")
+        print(f"   Quota: {settings.session_disk_quota_mb}MB per session")
+    else:
+        print(f"📁 Filesystem Isolation: Disabled")
+    
     # Log MCP server info
     if settings.mcp_enabled:
         print(f"🔌 MCP Server: Enabled at /mcp")
@@ -95,6 +105,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         print(f"🖥️  Cleaning up {active_count} active display(s)...")
         await display_manager.shutdown()
         print("   All displays shut down")
+    
+    # Clean up all active filesystems
+    if settings.filesystem_isolation_enabled:
+        fs_count = filesystem_manager.active_filesystem_count
+        if fs_count > 0:
+            print(f"📁 Cleaning up {fs_count} active filesystem(s)...")
+            await filesystem_manager.shutdown()
+            print("   All filesystems cleaned up")
 
 
 # =============================================================================

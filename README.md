@@ -7,6 +7,7 @@ A production-ready FastAPI backend for managing Claude Computer Use agent sessio
 This project transforms the Anthropic Computer Use demo from an experimental Streamlit interface into a scalable backend API with:
 
 - **Multi-Session Concurrency** - Each session gets an isolated virtual desktop
+- **Filesystem Isolation** - Each session has isolated HOME, downloads, and browser profiles (OverlayFS)
 - **MCP Server** - Connect from Cursor IDE or Claude Desktop via Model Context Protocol
 - **RESTful API** for session and message management
 - **Server-Sent Events (SSE)** for real-time agent updates
@@ -35,6 +36,7 @@ Each session gets its own **isolated X11 display**, enabling true concurrent usa
 │                              │                                           │
 │                    ┌─────────┴─────────┐                                │
 │                    │  Display Manager  │                                │
+│                    │ Filesystem Manager│                                │
 │                    │  Session Manager  │                                │
 │                    └─────────┬─────────┘                                │
 │                              │                                           │
@@ -45,22 +47,56 @@ Each session gets its own **isolated X11 display**, enabling true concurrent usa
 │  │   noVNC :6081 │      noVNC :6082      │   noVNC :6083 │              │
 │  │  ┌─────────┐  │     ┌─────────┐       │  ┌─────────┐  │              │
 │  │  │ Firefox │  │     │ Firefox │       │  │ Firefox │  │              │
+│  │  │ (own fs)│  │     │ (own fs)│       │  │ (own fs)│  │              │
 │  │  └─────────┘  │     └─────────┘       │  └─────────┘  │              │
 │  └───────────────┴───────────────────────┴───────────────┘              │
 │                                                                          │
-│  Each session: ~100MB RAM, 1-3 second startup                           │
+│  Each session: ~100MB RAM, isolated display + filesystem                │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Why Multi-Display?
+### Why This Architecture?
 
 | Feature | Benefit |
 |---------|---------|
-| **Isolated Desktops** | Users don't interfere with each other |
+| **Isolated Desktops** | Each session has its own X11 display |
+| **Isolated Filesystems** | Each session has its own HOME, downloads, browser profile (OverlayFS) |
 | **Persistent State** | Browser tabs, forms, files persist per session |
 | **Fast Startup** | 1-3 seconds (vs 10-30s for container orchestration) |
 | **Low Memory** | ~100MB per session (vs ~1GB for containers) |
+| **Efficient Storage** | Copy-on-write means only changed files use disk |
 | **Render.com Ready** | No Docker socket needed |
+
+### Session Isolation
+
+Each session is fully isolated:
+
+```
+Session 1:                          Session 2:
+┌─────────────────────┐            ┌─────────────────────┐
+│  Display: :1        │            │  Display: :2        │
+│  VNC: 5901          │            │  VNC: 5902          │
+├─────────────────────┤            ├─────────────────────┤
+│  /home/user/        │            │  /home/user/        │
+│    Downloads/       │ (isolated) │    Downloads/       │
+│    .mozilla/        │            │    .mozilla/        │
+│    .config/         │            │    .config/         │
+└─────────────────────┘            └─────────────────────┘
+         │                                  │
+         └──────────┬───────────────────────┘
+                    │
+           ┌────────▼────────┐
+           │   Base Layer    │
+           │   (shared,      │
+           │   read-only)    │
+           │   ~500MB        │
+           └─────────────────┘
+```
+
+**OverlayFS** provides copy-on-write semantics:
+- Shared base layer (OS, Firefox, apps) - one copy for all sessions
+- Per-session upper layer - only stores changed files
+- Disk cost: ~0 until session downloads or modifies files
 
 ## 🚀 Quick Start
 
@@ -271,10 +307,11 @@ python -m http.server 8080 --directory frontend
 │   │   ├── server.py           # FastMCP setup
 │   │   └── tools.py            # MCP tool implementations
 │   ├── services/
-│   │   ├── session_manager.py  # Session orchestration
-│   │   ├── display_manager.py  # Multi-display management
-│   │   ├── session_cleanup.py  # Auto-cleanup service
-│   │   └── agent_runner.py     # Anthropic loop wrapper
+│   │   ├── session_manager.py     # Session orchestration
+│   │   ├── display_manager.py     # Multi-display management
+│   │   ├── filesystem_manager.py  # OverlayFS isolation
+│   │   ├── session_cleanup.py     # Auto-cleanup service
+│   │   └── agent_runner.py        # Anthropic loop wrapper
 │   ├── db/
 │   │   ├── models.py           # SQLAlchemy models
 │   │   ├── session.py          # DB session factory
@@ -327,11 +364,12 @@ Create ──► Active ──► Idle (no activity) ──► Auto-Destroyed
 ## 🔒 Security Considerations
 
 1. **API Key Protection**: Never expose `ANTHROPIC_API_KEY` to the frontend
-2. **Session Isolation**: Each session has isolated X11 display (no cross-session access)
-3. **No Session Enumeration**: `list_sessions` disabled in MCP for privacy (requires auth)
-4. **Input Sanitization**: All user input is sanitized via Pydantic + bleach
-5. **Rate Limiting**: Configurable limits on API endpoints
-6. **CORS**: Restricted origins in production
+2. **Display Isolation**: Each session has isolated X11 display (no cross-session access)
+3. **Filesystem Isolation**: Each session has isolated HOME, downloads, browser profile (OverlayFS)
+4. **No Session Enumeration**: `list_sessions` disabled in MCP for privacy (requires auth)
+5. **Input Sanitization**: All user input is sanitized via Pydantic + bleach
+6. **Rate Limiting**: Configurable limits on API endpoints
+7. **CORS**: Restricted origins in production
 
 ## 📊 Sequence Diagram
 
@@ -387,6 +425,8 @@ For Render.com deployment, use the single-port architecture with nginx proxying.
 | `CLEANUP_INTERVAL_SECONDS` | Cleanup check interval | 300 (5 min) |
 | `MCP_ENABLED` | Enable MCP server | true |
 | `MAX_DISPLAYS` | Max concurrent sessions | 20 |
+| `FILESYSTEM_ISOLATION_ENABLED` | Enable OverlayFS isolation | true |
+| `SESSION_DISK_QUOTA_MB` | Per-session disk quota | 500 |
 | `DEBUG` | Enable debug mode | false |
 | `CORS_ORIGINS` | Allowed CORS origins | localhost |
 
@@ -401,6 +441,8 @@ Detailed documentation for developers is available in the `docs/` folder:
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, code style, testing guide |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Render.com, production deployment |
 | [plans/multi_session_scaling.md](docs/plans/multi_session_scaling.md) | Multi-display architecture design |
+| [plans/session_filesystem_isolation.md](docs/plans/session_filesystem_isolation.md) | OverlayFS filesystem isolation |
+| [plans/session_snapshots.md](docs/plans/session_snapshots.md) | CRIU-based session snapshots (future) |
 | [plans/mcp_server_transformation.md](docs/plans/mcp_server_transformation.md) | MCP server implementation plan |
 
 ## 📝 License

@@ -30,6 +30,7 @@ from app.db.repositories import SessionRepository
 from app.db.session import get_db_context
 from app.services.session_manager import session_manager
 from app.services.display_manager import display_manager
+from app.services.filesystem_manager import filesystem_manager
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,10 @@ class SessionCleanupService:
                         # Destroy display
                         await display_manager.destroy_display(session.id)
                         
+                        # Destroy filesystem
+                        if settings.filesystem_isolation_enabled:
+                            await filesystem_manager.destroy_filesystem(session.id)
+                        
                         # Archive session
                         await repo.delete_session(session.id)
                         
@@ -190,6 +195,8 @@ class SessionCleanupService:
             for session in expired:
                 try:
                     await display_manager.destroy_display(session.id)
+                    if settings.filesystem_isolation_enabled:
+                        await filesystem_manager.destroy_filesystem(session.id)
                     await repo.delete_session(session.id)
                     destroyed_count += 1
                 except Exception as e:

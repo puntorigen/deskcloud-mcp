@@ -266,15 +266,24 @@ class AgentRunner:
         Handles the actual integration with Anthropic's code.
         Emits completion event when done (success or error).
         
-        Note: Sets DISPLAY environment variable if display_env is provided.
-        This is necessary for isolated X11 desktops per session.
+        Note: Sets environment variables from display_env if provided.
+        This includes DISPLAY for isolated X11 desktops and HOME/TMPDIR
+        for isolated filesystems per session.
         """
         import os
         
-        # Set display environment for this session's isolated desktop
-        original_display = os.environ.get("DISPLAY")
-        if self.display_env and "DISPLAY" in self.display_env:
-            os.environ["DISPLAY"] = self.display_env["DISPLAY"]
+        # Save original environment variables that we'll modify
+        original_env = {}
+        env_keys_to_set = ["DISPLAY", "HOME", "TMPDIR", "XDG_CONFIG_HOME", 
+                          "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"]
+        
+        for key in env_keys_to_set:
+            original_env[key] = os.environ.get(key)
+        
+        # Set session-specific environment variables
+        if self.display_env:
+            for key, value in self.display_env.items():
+                os.environ[key] = value
         
         try:
             if not ANTHROPIC_DEMO_AVAILABLE:
@@ -330,12 +339,13 @@ class AgentRunner:
             self._queue_event(complete_event)
         
         finally:
-            # Restore original DISPLAY environment
-            if original_display is not None:
-                os.environ["DISPLAY"] = original_display
-            elif "DISPLAY" in os.environ and self.display_env:
-                # We set it but there was no original, remove it
-                del os.environ["DISPLAY"]
+            # Restore original environment variables
+            for key, original_value in original_env.items():
+                if original_value is not None:
+                    os.environ[key] = original_value
+                elif key in os.environ:
+                    # We set it but there was no original, remove it
+                    del os.environ[key]
     
     async def _run_mock_loop(self) -> None:
         """

@@ -32,6 +32,15 @@ services:
       - "6080:6080"   # noVNC web interface
       - "5900:5900"   # Direct VNC (optional)
     
+    # Capabilities for OverlayFS (filesystem isolation)
+    # CAP_SYS_ADMIN is required for mount operations
+    cap_add:
+      - SYS_ADMIN
+    
+    # Security options for OverlayFS
+    security_opt:
+      - apparmor:unconfined
+    
     # Environment variables
     environment:
       # Required: Claude API key
@@ -53,6 +62,11 @@ services:
       
       # CORS origins (comma-separated)
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      
+      # Filesystem isolation settings
+      - SESSIONS_DIR=${SESSIONS_DIR:-/sessions}
+      - FILESYSTEM_BASE_DIR=${FILESYSTEM_BASE_DIR:-/sessions/base}
+      - FILESYSTEM_ISOLATION_ENABLED=${FILESYSTEM_ISOLATION_ENABLED:-true}
     
     # Volume mounts
     volumes:
@@ -61,6 +75,9 @@ services:
       
       # Persist Anthropic settings (API key, etc.)
       - ~/.anthropic:/home/computeruse/.anthropic
+      
+      # Persist session filesystems (for OverlayFS isolation)
+      - sessions-data:/sessions
       
       # Development: mount source for hot reload (optional)
       # - ./app:/home/computeruse/app
@@ -108,6 +125,15 @@ services:
 #
 # volumes:
 #   postgres_data:
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+
+volumes:
+  sessions-data:
+    name: claude-computer-use-sessions
+    driver: local
 
 # ==============================================================================
 # Networks

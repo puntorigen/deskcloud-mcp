@@ -51,6 +51,71 @@ mkdir -p /home/computeruse/data
 python -c "from app.db.session import init_db_sync; init_db_sync()"
 
 # ==============================================================================
+# Initialize Filesystem Isolation
+# ==============================================================================
+
+if [ "${FILESYSTEM_ISOLATION_ENABLED:-true}" = "true" ]; then
+    echo "📁 Initializing filesystem isolation..."
+    
+    # Ensure sessions directories exist with proper structure
+    mkdir -p /sessions/base/home/user/.config
+    mkdir -p /sessions/base/home/user/.local/share
+    mkdir -p /sessions/base/home/user/.cache
+    mkdir -p /sessions/base/home/user/Desktop
+    mkdir -p /sessions/base/home/user/Downloads
+    mkdir -p /sessions/base/tmp
+    mkdir -p /sessions/active
+    mkdir -p /sessions/snapshots
+    chmod 1777 /sessions/base/tmp
+    
+    # Ensure OverlayFS kernel module is loaded
+    if ! grep -q overlay /proc/filesystems 2>/dev/null; then
+        echo "🔧 Loading overlay kernel module..."
+        modprobe overlay 2>/dev/null || true
+    fi
+    
+    # Verify OverlayFS kernel module is loaded
+    if ! grep -q overlay /proc/filesystems 2>/dev/null; then
+        echo "⚠️  OverlayFS module not loaded, this is unusual..."
+        echo "   Docker uses OverlayFS internally, so it should always be available"
+    else
+        echo "✅ OverlayFS kernel module is loaded"
+    fi
+    
+    # Test if we can actually mount overlayfs (requires CAP_SYS_ADMIN)
+    TEST_DIR="/tmp/.overlay_test_$$"
+    mkdir -p "$TEST_DIR"/{lower,upper,work,merged}
+    
+    if mount -t overlay overlay \
+        -o "lowerdir=$TEST_DIR/lower,upperdir=$TEST_DIR/upper,workdir=$TEST_DIR/work" \
+        "$TEST_DIR/merged" 2>/dev/null; then
+        umount "$TEST_DIR/merged" 2>/dev/null
+        rm -rf "$TEST_DIR"
+        echo "✅ OverlayFS mount permissions OK"
+    else
+        rm -rf "$TEST_DIR"
+        echo ""
+        echo "❌ ERROR: Cannot mount OverlayFS!"
+        echo ""
+        echo "   This is a PERMISSIONS issue, not a missing package."
+        echo "   OverlayFS is a kernel feature (not installable separately)."
+        echo ""
+        echo "   Fix: Add these to docker-compose.yml:"
+        echo ""
+        echo "     services:"
+        echo "       app:"
+        echo "         cap_add:"
+        echo "           - SYS_ADMIN"
+        echo "         security_opt:"
+        echo "           - apparmor:unconfined"
+        echo ""
+        exit 1
+    fi
+else
+    echo "ℹ️  Filesystem isolation disabled"
+fi
+
+# ==============================================================================
 # Start Application Services
 # ==============================================================================
 
@@ -85,13 +150,13 @@ echo "  🖥️  Frontend:  http://localhost:8080"
 echo ""
 echo "  Multi-Session Mode:"
 echo "  -------------------"
-echo "  Each session gets its own VNC port:"
-echo "  - Session 1: http://localhost:6081/vnc.html"
-echo "  - Session 2: http://localhost:6082/vnc.html"
-echo "  - etc."
+echo "  Each session gets:"
+echo "  - Isolated X11 display (VNC port 6081, 6082, ...)"
+echo "  - Isolated filesystem (HOME, downloads, configs)"
 echo ""
-echo "  The vnc_url in API responses shows the correct URL"
-echo "  for each session's isolated desktop."
+echo "  Session isolation:"
+echo "  - Display:    http://localhost:6081/vnc.html (per session)"
+echo "  - Filesystem: OverlayFS with CoW (copy-on-write)"
 echo ""
 echo "  Set ANTHROPIC_API_KEY environment variable"
 echo "  to enable agent functionality."
