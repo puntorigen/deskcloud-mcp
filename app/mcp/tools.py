@@ -12,6 +12,11 @@ Defines all MCP tools for computer-use functionality:
 
 Each tool wraps the existing SessionManager functionality
 to expose it via the MCP protocol.
+
+BYOK (Bring Your Own Key):
+    Tools use the API key from the X-Anthropic-API-Key header when provided.
+    This enables free orchestration while users pay for their own API usage.
+    Falls back to the server's ANTHROPIC_API_KEY environment variable.
 """
 
 import asyncio
@@ -29,8 +34,39 @@ from app.db.repositories import SessionRepository
 from app.db.session import get_db_context
 from app.services import session_manager
 from app.services.display_manager import display_manager
+from .context import get_current_api_key
 
 logger = logging.getLogger(__name__)
+
+
+def _get_api_key() -> str:
+    """
+    Get the API key to use for this request.
+    
+    Priority:
+    1. BYOK: X-Anthropic-API-Key header (per-request)
+    2. Environment: ANTHROPIC_API_KEY (server default)
+    
+    Raises:
+        ValueError: If no API key is available
+    """
+    # Check for BYOK key first
+    byok_key = get_current_api_key()
+    if byok_key:
+        logger.debug("Using BYOK API key from request header")
+        return byok_key
+    
+    # Fall back to server environment
+    env_key = settings.anthropic_api_key.get_secret_value()
+    if env_key:
+        logger.debug("Using API key from server environment")
+        return env_key
+    
+    raise ValueError(
+        "No Anthropic API key available. Either:\n"
+        "1. Set X-Anthropic-API-Key header in your MCP client config, or\n"
+        "2. Set ANTHROPIC_API_KEY environment variable on the server"
+    )
 
 
 def register_tools(mcp: FastMCP) -> None:
@@ -167,11 +203,15 @@ def register_tools(mcp: FastMCP) -> None:
                 }
             
             try:
+                # Get API key (BYOK or server default)
+                api_key = _get_api_key()
+                
                 # Send message and get event queue
                 message_id, event_queue = await session_manager.send_message(
                     repo=repo,
                     session=session,
                     content=task,
+                    api_key=api_key,
                 )
                 
                 # Collect events until completion
@@ -242,10 +282,23 @@ def register_tools(mcp: FastMCP) -> None:
                 }
                 
             except ValueError as e:
+                error_msg = str(e)
+                # Check if it's an API key error
+                if "API key" in error_msg:
+                    logger.error(f"MCP: No API key available: {e}")
+                    return {
+                        "status": "error",
+                        "error": error_msg,
+                        "result": None,
+                        "screenshots": [],
+                        "tool_uses": [],
+                        "duration_seconds": round(time.time() - start_time, 1),
+                        "hint": "Set X-Anthropic-API-Key header in your MCP client config",
+                    }
                 logger.error(f"MCP: Task error: {e}")
                 return {
                     "status": "error",
-                    "error": str(e),
+                    "error": error_msg,
                     "result": None,
                     "screenshots": [],
                     "tool_uses": [],

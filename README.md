@@ -141,6 +141,26 @@ docker-compose up -d --build
 
 This server implements the **Model Context Protocol (MCP)**, allowing AI assistants to control the virtual desktop directly.
 
+### BYOK (Bring Your Own Key)
+
+The orchestration is **FREE** - you only pay for your own Anthropic API usage. Provide your API key in the MCP config:
+
+```json
+{
+  "mcpServers": {
+    "computer-use": {
+      "url": "http://localhost:8000/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "X-Anthropic-API-Key": "sk-ant-your-key-here"
+      }
+    }
+  }
+}
+```
+
+**Note:** The API key flows through infrastructure (HTTP headers), never through tool parameters. The LLM never sees your API key.
+
 ### Configure Cursor IDE
 
 Add to `.cursor/mcp.json`:
@@ -150,7 +170,10 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "computer-use": {
       "url": "http://localhost:8000/mcp",
-      "transport": "streamable-http"
+      "transport": "streamable-http",
+      "headers": {
+        "X-Anthropic-API-Key": "sk-ant-your-key-here"
+      }
     }
   }
 }
@@ -418,7 +441,7 @@ For Render.com deployment, use the single-port architecture with nginx proxying.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Claude API key (required) | - |
+| `ANTHROPIC_API_KEY` | Claude API key (server default, see BYOK below) | - |
 | `API_PROVIDER` | anthropic, bedrock, vertex | anthropic |
 | `DATABASE_URL` | Database connection string | sqlite |
 | `SESSION_TTL_SECONDS` | Session idle timeout | 3600 (1 hour) |

@@ -223,6 +223,7 @@ class SessionManager:
         repo: SessionRepository,
         session: DBSession,
         content: str,
+        api_key: str | None = None,
     ) -> tuple[str, asyncio.Queue[Event]]:
         """
         Send a user message and start agent execution.
@@ -238,6 +239,8 @@ class SessionManager:
             repo: Session repository
             session: Target session (must be active/completed)
             content: User message content
+            api_key: Optional API key for BYOK (Bring Your Own Key)
+                     If not provided, uses server's ANTHROPIC_API_KEY
         
         Returns:
             Tuple of (message_id, event_queue)
@@ -282,6 +285,7 @@ class SessionManager:
         session_env = {**display_env, **filesystem_env}
         
         # Create and configure agent runner
+        # Pass BYOK API key if provided, otherwise AgentRunner uses env var
         runner = AgentRunner(
             session_id=session.id,
             model=session.model,
@@ -290,6 +294,7 @@ class SessionManager:
             messages=messages,
             tool_version=tool_version,
             display_env=session_env,
+            api_key=api_key or "",  # Empty string triggers env var fallback
         )
         
         # Track the runner
