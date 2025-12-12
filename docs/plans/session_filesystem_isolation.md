@@ -1,8 +1,11 @@
 # Session Filesystem Isolation: OverlayFS-Based Approach
 
+> ⚠️ **Context**: See [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) for project overview.
+
 **Author:** Pablo Schaffner  
 **Date:** December 2025  
-**Status:** Research / Future Enhancement  
+**Status:** ✅ Implemented (Core Feature)  
+**Category:** Open Source Core  
 **Depends on:** [Multi-Session Scaling](./multi_session_scaling.md), [Session Snapshots](./session_snapshots.md)
 
 ---

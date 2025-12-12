@@ -1,8 +1,11 @@
 # Session Snapshots: CRIU-Based State Persistence
 
+> ⚠️ **Context**: See [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) for project overview.
+
 **Author:** Pablo Schaffner  
 **Date:** December 2025  
-**Status:** Research / Future Enhancement  
+**Status:** 🔮 Future Research  
+**Category:** Open Source Core Enhancement  
 **Depends on:** [Multi-Session Scaling](./multi_session_scaling.md)
 
 ---

@@ -466,6 +466,7 @@ Detailed documentation for developers is available in the `docs/` folder:
 | [plans/multi_session_scaling.md](docs/plans/multi_session_scaling.md) | Multi-display architecture design |
 | [plans/session_filesystem_isolation.md](docs/plans/session_filesystem_isolation.md) | OverlayFS filesystem isolation |
 | [plans/session_snapshots.md](docs/plans/session_snapshots.md) | CRIU-based session snapshots (future) |
+| [plans/session_video_recording.md](docs/plans/session_video_recording.md) | FFmpeg-based session recording (proposed) |
 | [plans/mcp_server_transformation.md](docs/plans/mcp_server_transformation.md) | MCP server implementation plan |
 
 ## 📝 License

@@ -1,8 +1,11 @@
 # Multi-Session & Concurrent Users Architecture Plan
 
+> ⚠️ **Context**: See [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) for project overview.
+
 **Author:** Pablo Schaffner  
 **Date:** December 2025 
-**Status:** Proposed Architecture
+**Status:** ✅ Implemented (Core Feature)  
+**Category:** Open Source Core
 
 ---
 
