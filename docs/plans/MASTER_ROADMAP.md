@@ -499,6 +499,12 @@ All detailed planning documents are in `docs/plans/`:
 | **`session_filesystem_isolation.md`** | OverlayFS isolation | ✅ Implemented |
 | **`session_snapshots.md`** | CRIU state persistence | 🔮 Future Research |
 
+### Operational
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| **`opensource_release_checklist.md`** | Prepare repo for public release | 📋 Pre-Release |
+
 ### Reading Order for New AI Assistants
 
 1. **This document** (`MASTER_ROADMAP.md`) - Context and overview
