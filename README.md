@@ -1,68 +1,101 @@
-# DeskCloud Platform (Private)
+# DeskCloud MCP
 
-> ⚠️ **Private Repository** - This repo contains premium features and business logic.
+Open source MCP (Model Context Protocol) server for AI-controlled virtual desktops.
 
-## Overview
+> **Note**: Currently powered by [Anthropic's computer use](https://docs.anthropic.com/en/docs/build-with-claude/computer-use) capabilities. Requires a Claude API key.
 
-This is the private monorepo for DeskCloud, containing:
-- Premium features (Connect Agent, video recording, custom images)
-- Next.js frontend (landing page + dashboard)
-- Infrastructure configurations
+DeskCloud MCP provides:
 
-## Structure
+- **Multi-session virtual desktops** (isolated X11 display per session)
+- **Real-time streaming** via Server-Sent Events (SSE)
+- **MCP endpoint** for Cursor / Claude Desktop integrations
+- **VNC/noVNC** so you can watch what the agent is doing
+- **SQLite** persistence (PostgreSQL optional)
+- **BYOK** (Bring Your Own Key) — you provide your Anthropic API key
 
-```
-deskcloud-platform/
-├── core/                   # Git subtree from puntorigen/deskcloud-mcp
-├── frontend/               # Next.js app (Vercel)
-├── backend-premium/        # Premium API extensions (Render.com)
-├── connect-agent/          # Desktop client app
-├── infrastructure/         # Terraform/Docker configs
-└── docs/plans/             # Planning documents
-```
+## Quick start (Docker)
 
-## Getting Started
+### Prerequisites
 
-### 1. Set up the core subtree
+- Docker + Docker Compose
+- Anthropic API key (set it as an env var or provide it via MCP headers)
+
+### Run
 
 ```bash
-# Add the open source repo as a subtree
-git subtree add --prefix=core https://github.com/puntorigen/deskcloud-mcp.git main --squash
+# Create local env file
+cp .env.example .env
+
+# Set your ANTHROPIC_API_KEY in .env
+
+# Build and start
+docker-compose up --build
 ```
 
-### 2. Pull updates from open source
+### URLs
+
+- Frontend: `http://localhost:8080`
+- API docs: `http://localhost:8000/docs`
+- MCP endpoint: `http://localhost:8000/mcp`
+- noVNC: `http://localhost:6080/vnc.html`
+
+## MCP integration
+
+### Cursor
+
+Add a server to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "deskcloud-mcp": {
+      "url": "http://localhost:8000/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "X-Anthropic-API-Key": "<YOUR_ANTHROPIC_API_KEY>"
+      }
+    }
+  }
+}
+```
+
+### Available MCP tools
+
+- `create_session`
+- `execute_task`
+- `get_session_status`
+- `destroy_session`
+- `take_screenshot`
+
+## Local development (without Docker)
 
 ```bash
-git subtree pull --prefix=core https://github.com/puntorigen/deskcloud-mcp.git main --squash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Backend
+uvicorn app.main:app --reload --port 8000
+
+# Frontend
+python -m http.server 8080 --directory frontend
 ```
 
-### 3. Push fixes back to open source (if applicable)
+## Documentation
 
-```bash
-git subtree push --prefix=core https://github.com/puntorigen/deskcloud-mcp.git main
-```
+- `docs/API.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/DEPLOYMENT.md`
 
-## Plan Documents
+## Security
 
-All planning documents are in `docs/plans/`:
+See `SECURITY.md`.
 
-| Document | Description |
-|----------|-------------|
-| `MASTER_ROADMAP.md` | Start here - project overview and roadmap |
-| `nextjs_landing_dashboard.md` | Frontend + auth + dashboard |
-| `remote_agent_client.md` | Connect Agent (control your PCs) |
-| `multi_os_support.md` | Raspberry Pi, Android, Windows |
-| `session_video_recording.md` | Video recording feature |
-| `custom_image_builder.md` | Custom Docker images |
-| `opensource_release_checklist.md` | Open source release process |
+## Contributing
 
-## Environments
+See `CONTRIBUTING.md`.
 
-| Environment | Frontend | Backend |
-|-------------|----------|---------|
-| Production | deskcloud.app (Vercel) | api.deskcloud.app (Render) |
-| Staging | staging.deskcloud.app | api-staging.deskcloud.app |
+## License
 
-## Related Repositories
-
-- **Open Source Core**: [puntorigen/deskcloud-mcp](https://github.com/puntorigen/deskcloud-mcp)
+MIT (see `LICENSE`).
