@@ -1543,3 +1543,4 @@ Based on research, Scrapybara's Windows support:
 
 *Document Version: 1.0*  
 *Last Updated: December 2025*
+

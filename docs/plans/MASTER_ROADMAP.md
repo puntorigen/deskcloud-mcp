@@ -281,10 +281,10 @@ Benefits:
 
 ```bash
 # In private repo, sync changes from public open source repo
-git subtree pull --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main --squash
+git subtree pull --prefix=core git@github.com:puntorigen/deskcloud-mcp.git main --squash
 
 # If we fix a bug in core that should go back to open source
-git subtree push --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main
+git subtree push --prefix=core git@github.com:puntorigen/deskcloud-mcp.git main
 ```
 
 ---

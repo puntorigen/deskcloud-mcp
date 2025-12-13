@@ -887,13 +887,13 @@ deskcloud-platform/
 
 ```bash
 # Initial setup in premium repo
-git subtree add --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main --squash
+git subtree add --prefix=core git@github.com:puntorigen/deskcloud-mcp.git main --squash
 
 # Pull updates from public repo
-git subtree pull --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main --squash
+git subtree pull --prefix=core git@github.com:puntorigen/deskcloud-mcp.git main --squash
 
 # Push fixes back to public repo (if fixing core bugs in premium repo)
-git subtree push --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main
+git subtree push --prefix=core git@github.com:puntorigen/deskcloud-mcp.git main
 ```
 
 ---
@@ -950,8 +950,8 @@ deskcloud-mcp = "deskcloud_mcp.__main__:main"
 
 [project.urls]
 Homepage = "https://deskcloud.app"
-Repository = "https://github.com/deskcloud/deskcloud-mcp"
-Documentation = "https://github.com/deskcloud/deskcloud-mcp#readme"
+Repository = "https://github.com/puntorigen/deskcloud-mcp"
+Documentation = "https://github.com/puntorigen/deskcloud-mcp#readme"
 
 [build-system]
 requires = ["hatchling"]
@@ -1250,3 +1250,4 @@ def get_container_runtime() -> str:
 ---
 
 *This document should be followed before publishing the open source version. After publishing, move this file to the private repository.*
+
