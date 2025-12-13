@@ -20,8 +20,10 @@
 7. [GitHub Repository Setup](#github-repository-setup)
 8. [Pre-Publish Verification](#pre-publish-verification)
 9. [Subtree Compatibility](#subtree-compatibility)
-10. [Post-Publish Tasks](#post-publish-tasks)
-11. [Checklist Summary](#checklist-summary)
+10. [PyPI Publishing](#pypi-publishing)
+11. [Docker Hub Publishing](#docker-hub-publishing)
+12. [Post-Publish Tasks](#post-publish-tasks)
+13. [Checklist Summary](#checklist-summary)
 
 ---
 
@@ -29,10 +31,12 @@
 
 ### What We're Doing
 
-Preparing the `mcp-computer-use` codebase for public release as an open source project (MIT license). This repo will serve as:
+Preparing the codebase for public release as `deskcloud-mcp` (MIT license). This repo will serve as:
 
 1. **Standalone open source project** - Self-hostable MCP server
-2. **Subtree for premium repo** - Core synced into `deskcloud-platform`
+2. **PyPI package** - `pip install deskcloud-mcp` / `uvx deskcloud-mcp`
+3. **Docker images** - `deskcloud/session` for isolated sessions
+4. **Subtree for premium repo** - Core synced into `deskcloud-platform`
 
 ### Key Principles
 
@@ -40,10 +44,26 @@ Preparing the `mcp-computer-use` codebase for public release as an open source p
 - **Self-hosting focused** - README should help users run their own instance
 - **Clean history** - New repo without sensitive commit history
 - **Contributor-friendly** - Clear contribution guidelines
+- **Brand-forward** - Name creates association with deskcloud.app
 
 ---
 
 ## Repository Strategy
+
+### Naming
+
+| Repository | Name | Visibility |
+|------------|------|------------|
+| **Open Source** | `deskcloud-mcp` | Public |
+| **Premium** | `deskcloud-platform` | Private |
+
+### Published Artifacts
+
+| Artifact | Registry | Install Command |
+|----------|----------|-----------------|
+| `deskcloud-mcp` | PyPI | `pip install deskcloud-mcp` |
+| `deskcloud/session` | Docker Hub | Auto-pulled by pip package |
+| `deskcloud/mcp` | Docker Hub | `docker run deskcloud/mcp` |
 
 ### Two-Repository Model
 
@@ -52,10 +72,10 @@ Preparing the `mcp-computer-use` codebase for public release as an open source p
 │                         Repository Strategy                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  PUBLIC: mcp-computer-use                                                   │
-│  ════════════════════════                                                   │
+│  PUBLIC: deskcloud-mcp                                                      │
+│  ══════════════════════                                                     │
 │  • MIT License                                                              │
-│  • Open source MCP server                                                   │
+│  • Published to PyPI + Docker Hub                                           │
 │  • Self-hosting instructions                                                │
 │  • Community contributions welcome                                          │
 │  • NO pricing, premium features, business plans                             │
@@ -867,13 +887,290 @@ deskcloud-platform/
 
 ```bash
 # Initial setup in premium repo
-git subtree add --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main --squash
+git subtree add --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main --squash
 
 # Pull updates from public repo
-git subtree pull --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main --squash
+git subtree pull --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main --squash
 
 # Push fixes back to public repo (if fixing core bugs in premium repo)
-git subtree push --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main
+git subtree push --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main
+```
+
+---
+
+## PyPI Publishing
+
+### Package Structure
+
+```
+deskcloud-mcp/
+├── src/
+│   └── deskcloud_mcp/          # Package (underscore for Python)
+│       ├── __init__.py
+│       ├── __main__.py         # Entry point
+│       ├── server.py           # MCP server
+│       ├── container.py        # Docker/Podman management
+│       └── ...
+├── pyproject.toml              # Package config
+├── README.md
+└── LICENSE
+```
+
+### pyproject.toml
+
+```toml
+[project]
+name = "deskcloud-mcp"
+version = "0.1.0"
+description = "MCP server for AI-controlled virtual desktops"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["mcp", "claude", "ai", "automation", "desktop", "anthropic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "mcp>=0.1.0",
+    "anthropic>=0.18.0",
+    "docker>=7.0.0",
+    "Pillow>=10.0.0",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+deskcloud-mcp = "deskcloud_mcp.__main__:main"
+
+[project.urls]
+Homepage = "https://deskcloud.app"
+Repository = "https://github.com/deskcloud/deskcloud-mcp"
+Documentation = "https://github.com/deskcloud/deskcloud-mcp#readme"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deskcloud_mcp"]
+```
+
+### Publishing to PyPI
+
+```bash
+# Install build tools
+pip install build twine
+
+# Build the package
+python -m build
+
+# Upload to TestPyPI first
+twine upload --repository testpypi dist/*
+
+# Test install from TestPyPI
+pip install --index-url https://test.pypi.org/simple/ deskcloud-mcp
+
+# If all good, upload to PyPI
+twine upload dist/*
+```
+
+### GitHub Actions for PyPI
+
+```yaml
+# .github/workflows/publish.yml
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install build twine
+      
+      - name: Build package
+        run: python -m build
+      
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: twine upload dist/*
+```
+
+---
+
+## Docker Hub Publishing
+
+### Images to Publish
+
+| Image | Purpose | Dockerfile |
+|-------|---------|------------|
+| `deskcloud/session` | Individual session container | `docker/Dockerfile.session` |
+| `deskcloud/mcp` | All-in-one server | `docker/Dockerfile.mcp` |
+
+### Session Container (deskcloud/session)
+
+```dockerfile
+# docker/Dockerfile.session
+FROM ubuntu:22.04
+
+# Install X11, VNC, browser, and tools
+RUN apt-get update && apt-get install -y \
+    xvfb \
+    x11vnc \
+    novnc \
+    websockify \
+    firefox \
+    python3 \
+    python3-pip \
+    xdotool \
+    scrot \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python tools
+RUN pip3 install pyautogui pillow
+
+# Setup VNC password (optional, can be overridden)
+RUN mkdir -p ~/.vnc && x11vnc -storepasswd deskcloud ~/.vnc/passwd
+
+# Copy entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose ports
+EXPOSE 5900 6080
+
+ENTRYPOINT ["/entrypoint.sh"]
+```
+
+### Building and Pushing
+
+```bash
+# Build session image
+docker build -t deskcloud/session:latest -f docker/Dockerfile.session .
+
+# Build all-in-one image
+docker build -t deskcloud/mcp:latest -f docker/Dockerfile.mcp .
+
+# Push to Docker Hub
+docker push deskcloud/session:latest
+docker push deskcloud/mcp:latest
+
+# Tag with version
+docker tag deskcloud/session:latest deskcloud/session:0.1.0
+docker push deskcloud/session:0.1.0
+```
+
+### GitHub Actions for Docker Hub
+
+```yaml
+# .github/workflows/docker.yml
+name: Build and Push Docker Images
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Build and push session image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.session
+          push: true
+          tags: |
+            deskcloud/session:latest
+            deskcloud/session:${{ github.ref_name }}
+      
+      - name: Build and push mcp image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.mcp
+          push: true
+          tags: |
+            deskcloud/mcp:latest
+            deskcloud/mcp:${{ github.ref_name }}
+```
+
+### Container Runtime Detection
+
+The pip package should detect available container runtime:
+
+```python
+# src/deskcloud_mcp/container.py
+import shutil
+import subprocess
+
+def get_container_runtime() -> str:
+    """Detect available container runtime (Docker or Podman)."""
+    
+    # Try Docker first
+    if shutil.which("docker"):
+        try:
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return "docker"
+        except subprocess.TimeoutExpired:
+            pass
+    
+    # Try Podman as fallback
+    if shutil.which("podman"):
+        try:
+            result = subprocess.run(
+                ["podman", "info"],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return "podman"
+        except subprocess.TimeoutExpired:
+            pass
+    
+    raise RuntimeError(
+        "deskcloud-mcp requires Docker or Podman to run sessions.\n\n"
+        "Install Docker: https://docs.docker.com/get-docker/\n"
+        "Or Podman: https://podman.io/getting-started/installation"
+    )
 ```
 
 ---
@@ -882,9 +1179,12 @@ git subtree push --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main
 
 ### Immediately After Publishing
 
-- [ ] Verify repo is accessible
-- [ ] Test git clone works
-- [ ] Test Docker build works
+- [ ] Verify GitHub repo is accessible
+- [ ] Test `git clone` works
+- [ ] Test `pip install deskcloud-mcp` works
+- [ ] Test `docker pull deskcloud/session` works
+- [ ] Test `uvx deskcloud-mcp` works
+- [ ] Verify README renders correctly on PyPI
 - [ ] Announce on social media (optional)
 - [ ] Update any external links
 
@@ -895,6 +1195,8 @@ git subtree push --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main
 - [ ] Keep dependencies updated
 - [ ] Security patches
 - [ ] Sync subtree regularly
+- [ ] Update Docker images when base images update
+- [ ] Publish new PyPI versions for releases
 
 ---
 
@@ -909,6 +1211,7 @@ git subtree push --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main
 - [ ] Rewrite README.md for public audience
 - [ ] Create LICENSE file (MIT)
 - [ ] Create .env.example
+- [ ] Rename to `deskcloud-mcp` package structure
 
 ### 🟡 Important (Should Do)
 
@@ -918,13 +1221,20 @@ git subtree push --prefix=core git@github.com:YOUR_ORG/mcp-computer-use.git main
 - [ ] Create .github/ISSUE_TEMPLATE/
 - [ ] Create .github/PULL_REQUEST_TEMPLATE.md
 - [ ] Create .github/workflows/ci.yml
+- [ ] Create .github/workflows/publish.yml (PyPI)
+- [ ] Create .github/workflows/docker.yml (Docker Hub)
 - [ ] Update .gitignore
+- [ ] Create pyproject.toml for PyPI
+- [ ] Create docker/Dockerfile.session
+- [ ] Create docker/Dockerfile.mcp
 
 ### 🟢 Nice to Have
 
 - [ ] Create CHANGELOG.md
 - [ ] Add code coverage badges
 - [ ] Set up GitHub Discussions
+- [ ] Create social preview image for repo
+- [ ] Add PyPI/Docker badges to README
 - [ ] Create social preview image
 - [ ] Write SELF_HOSTING.md guide
 - [ ] Add more comprehensive tests

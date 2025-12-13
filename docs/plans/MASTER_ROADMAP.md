@@ -172,18 +172,25 @@ Phase 5 (Future):  Windows VMs + Enterprise features
 │                         Repository Structure                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  PUBLIC REPO: mcp-computer-use (Open Source)                               │
-│  ══════════════════════════════════════════                                │
-│  ├── app/                    # FastAPI backend                             │
+│  PUBLIC REPO: deskcloud-mcp (Open Source)                                  │
+│  ═════════════════════════════════════════                                  │
+│  ├── src/deskcloud_mcp/      # Python package                              │
+│  │   ├── __init__.py                                                       │
+│  │   ├── __main__.py         # Entry point                                 │
+│  │   ├── server.py           # MCP server                                  │
 │  │   ├── api/                # REST + MCP endpoints                        │
-│  │   ├── services/           # Session, display, tools                     │
+│  │   ├── services/           # Session, container orchestration            │
 │  │   └── db/                 # SQLModel models                             │
-│  ├── docs/                   # Documentation                               │
-│  │   ├── plans/              # Planning documents (this folder)            │
-│  │   └── api/                # API documentation                           │
-│  ├── scripts/                # Setup scripts                               │
+│  ├── docker/                 # Session container image                     │
+│  │   ├── Dockerfile          # deskcloud/session image                     │
+│  │   └── entrypoint.sh                                                     │
 │  ├── tests/                  # Test suite                                  │
+│  ├── pyproject.toml          # Package config (PyPI)                       │
 │  └── README.md               # Public documentation                        │
+│                                                                             │
+│  Published as:                                                              │
+│  • PyPI: deskcloud-mcp                                                     │
+│  • Docker Hub: deskcloud/session                                           │
 │                                                                             │
 │                    │                                                        │
 │                    │ git subtree (sync core)                               │
@@ -191,7 +198,7 @@ Phase 5 (Future):  Windows VMs + Enterprise features
 │                                                                             │
 │  PRIVATE REPO: deskcloud-platform (Premium)                                │
 │  ═══════════════════════════════════════════                               │
-│  ├── core/                   # Subtree from mcp-computer-use               │
+│  ├── core/                   # Subtree from deskcloud-mcp                  │
 │  │   └── (synced from public repo)                                        │
 │  ├── frontend/               # Next.js app                                 │
 │  │   ├── app/                # Pages (landing, dashboard)                  │
@@ -205,20 +212,79 @@ Phase 5 (Future):  Windows VMs + Enterprise features
 │  ├── connect-agent/          # Desktop client app                          │
 │  │   ├── src/                # Python agent code                           │
 │  │   └── installer/          # OS-specific installers                      │
+│  ├── docs/plans/             # Planning documents (moved from public)      │
 │  ├── infrastructure/         # Terraform/Docker configs                    │
 │  └── README.md               # Private documentation                       │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Distribution Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    deskcloud-mcp Distribution Architecture                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  User's Machine                                                             │
+│  ══════════════                                                             │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  deskcloud-mcp (PyPI package)                                        │   │
+│  │  ────────────────────────────                                        │   │
+│  │  pip install deskcloud-mcp                                           │   │
+│  │  uvx deskcloud-mcp                                                   │   │
+│  │                                                                       │   │
+│  │  • MCP endpoint (Claude/Cursor talks to this)                        │   │
+│  │  • Container orchestration                                            │   │
+│  │  • Session lifecycle management                                       │   │
+│  │  • NO display logic - delegates to containers                        │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                          │                                                  │
+│                          │ Docker / Podman API                              │
+│                          ▼                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Docker / Podman Runtime                                              │   │
+│  │  ───────────────────────                                              │   │
+│  │                                                                       │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │   │
+│  │  │ Session 1    │  │ Session 2    │  │ Session 3    │               │   │
+│  │  │              │  │              │  │              │               │   │
+│  │  │ • Xvfb       │  │ • Xvfb       │  │ • Xvfb       │               │   │
+│  │  │ • VNC        │  │ • VNC        │  │ • VNC        │               │   │
+│  │  │ • Browser    │  │ • Browser    │  │ • Browser    │               │   │
+│  │  │ • Tools      │  │ • Tools      │  │ • Tools      │               │   │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘               │   │
+│  │                                                                       │   │
+│  │  Image: deskcloud/session:latest (auto-pulled from Docker Hub)       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Benefits:
+• Zero host dependencies (no X11/VNC setup needed)
+• True session isolation (each session = separate container)
+• Works on macOS, Windows, Linux (anywhere Docker runs)
+• Pre-built images (users don't build anything)
+• Easy cleanup (container dies = session gone)
+```
+
+### Published Artifacts
+
+| Artifact | Registry | Purpose |
+|----------|----------|---------|
+| `deskcloud-mcp` | PyPI | MCP controller package |
+| `deskcloud/session` | Docker Hub | Session container image |
+| `deskcloud/mcp` | Docker Hub | All-in-one (for docker-compose users) |
+
 ### Sync Strategy
 
 ```bash
 # In private repo, sync changes from public open source repo
-git subtree pull --prefix=core git@github.com:org/mcp-computer-use.git main --squash
+git subtree pull --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main --squash
 
 # If we fix a bug in core that should go back to open source
-git subtree push --prefix=core git@github.com:org/mcp-computer-use.git main
+git subtree push --prefix=core git@github.com:deskcloud/deskcloud-mcp.git main
 ```
 
 ---
@@ -472,6 +538,22 @@ git subtree push --prefix=core git@github.com:org/mcp-computer-use.git main
 ### 10. "Always-On" for Servers
 **Decision**: Allow persistent AI access without approval popups  
 **Rationale**: Essential for server automation use case
+
+### 11. Repository Naming (Brand-Forward)
+**Decision**: Name public repo `deskcloud-mcp`, private repo `deskcloud-platform`  
+**Rationale**: Every GitHub star/fork = brand impression, clear association with deskcloud.app
+
+### 12. PyPI + Docker Distribution
+**Decision**: Publish to PyPI (`deskcloud-mcp`) with Docker container runtime (`deskcloud/session`)  
+**Rationale**: PyPI for easy `uvx` MCP integration, Docker for isolated sessions with zero host dependencies
+
+### 13. Container-Based Sessions
+**Decision**: All sessions run inside Docker containers, even for local users  
+**Rationale**: True isolation, no X11/VNC setup on host, works on macOS/Windows/Linux
+
+### 14. Docker + Podman Support
+**Decision**: Support both Docker and Podman as container runtimes  
+**Rationale**: Podman is rootless/daemonless alternative, CLI-compatible with Docker
 
 ---
 
