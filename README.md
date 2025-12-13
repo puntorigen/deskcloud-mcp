@@ -2,6 +2,8 @@
 
 Open source MCP (Model Context Protocol) server for AI-controlled virtual desktops.
 
+> **Note**: Currently powered by [Anthropic's computer use](https://docs.anthropic.com/en/docs/build-with-claude/computer-use) capabilities. Requires a Claude API key.
+
 DeskCloud MCP provides:
 
 - **Multi-session virtual desktops** (isolated X11 display per session)
@@ -9,6 +11,7 @@ DeskCloud MCP provides:
 - **MCP endpoint** for Cursor / Claude Desktop integrations
 - **VNC/noVNC** so you can watch what the agent is doing
 - **SQLite** persistence (PostgreSQL optional)
+- **BYOK** (Bring Your Own Key) — you provide your Anthropic API key
 
 ## Quick start (Docker)
 

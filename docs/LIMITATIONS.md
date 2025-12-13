@@ -3,40 +3,39 @@
 **Author:** Pablo Schaffner  
 **Last Updated:** December 2025
 
-This document outlines the current architectural limitations of the DeskCloud MCP implementation.
+This document outlines the current architectural limitations of DeskCloud MCP.
 
 ---
 
-## 1. Single Desktop Environment
+## Current Capabilities
+
+Before discussing limitations, here's what **is** supported:
+
+| Feature | Status |
+|---------|--------|
+| Multi-session support | ✅ Each session gets isolated X11 display |
+| Filesystem isolation | ✅ OverlayFS per session (isolated HOME, Downloads, browser profile) |
+| Per-session VNC | ✅ Each session has its own VNC/noVNC port |
+| Session TTL & cleanup | ✅ Auto-destroy after 1 hour of inactivity |
+| Chat history persistence | ✅ SQLite/PostgreSQL |
+| BYOK (Bring Your Own Key) | ✅ Users provide their own Anthropic API key |
+
+---
+
+## 1. Anthropic-Only
 
 ### Limitation
 
-The current implementation uses **one X11 display** (`:1`) shared by all sessions. Only one session can actively use the desktop at a time.
+Currently only supports Claude models via Anthropic's computer use capabilities. Other providers (OpenAI, Google, open source) are not supported.
 
 ### Impact
 
-| Scenario | Result |
-|----------|--------|
-| User A creates session, works on task | ✅ Works |
-| User B creates session while A is active | ⚠️ Overwrites A's desktop state |
-| User A returns to continue | ❌ Desktop state is lost |
+- Requires an Anthropic API key
+- Cannot use GPT-4o, Gemini, or other vision+tool-calling models
 
-### What IS Preserved
+### Future
 
-- ✅ Session metadata
-- ✅ Chat history (all messages)
-- ✅ Tool use history
-
-### What is NOT Preserved
-
-- ❌ Browser state (tabs, cookies, forms)
-- ❌ Open applications
-- ❌ Files created during session
-- ❌ Desktop layout
-
-### Future Resolution
-
-Multi-Display architecture using multiple Xvfb instances per session (not yet implemented).
+The architecture could be extended to support other providers with vision and tool-calling capabilities, but this would require significant refactoring of the agent loop.
 
 ---
 
@@ -44,17 +43,17 @@ Multi-Display architecture using multiple Xvfb instances per session (not yet im
 
 ### Limitation
 
-Active sessions consume resources (~100-200MB RAM) continuously. There is no way to suspend an inactive session and restore it later.
+Active sessions consume resources (~100MB RAM) continuously. There is no way to suspend an inactive session and restore it later.
 
 ### Impact
 
-- High memory usage with many idle sessions
-- Cannot scale to many concurrent users
-- No "hibernate and resume" capability
+- Memory usage scales linearly with active sessions
+- Cannot "hibernate and resume" a session
+- Sessions are destroyed after TTL expires
 
-### Future Resolution
+### Future
 
-CRIU-based checkpointing for session suspension and restoration (not yet implemented).
+CRIU-based checkpointing could enable session snapshots and restoration.
 
 ---
 
@@ -62,40 +61,22 @@ CRIU-based checkpointing for session suspension and restoration (not yet impleme
 
 ### Limitation
 
-Everything runs in one Docker container. A crash or restart loses all active sessions.
+All sessions run within one Docker container. A container restart loses all active sessions.
 
 ### Impact
 
 - Single point of failure
-- Cannot scale horizontally
+- Cannot scale horizontally across machines
 - Updates require restarting all sessions
 
 ### Mitigation
 
 - Database persists chat history across restarts
-- Multi-Display architecture (see limitation #1) provides session isolation within the container
+- Session metadata is preserved; only desktop state is lost
 
 ---
 
-## 4. Shared Filesystem
-
-### Limitation
-
-All sessions share the same filesystem. Files created by one session are visible to all others.
-
-### Impact
-
-- No file isolation between sessions
-- Potential data leakage between users
-- Disk space shared across all sessions
-
-### Workaround
-
-Future enhancement: Per-session home directories with UID mapping.
-
----
-
-## 5. No Resource Limits Per Session
+## 4. No Per-Session Resource Limits
 
 ### Limitation
 
@@ -104,65 +85,64 @@ Individual sessions cannot have CPU/memory limits. One runaway session can affec
 ### Impact
 
 - A memory-hungry browser tab affects all sessions
-- No fair resource allocation
+- No fair resource allocation between sessions
 - Cannot guarantee QoS per session
 
-### Workaround
+### Future
 
-Future enhancement: cgroups-based per-session resource limits.
+cgroups-based per-session resource limits could address this.
 
 ---
 
-## 6. VNC Streaming Only
+## 5. VNC Streaming Only
 
 ### Limitation
 
-Desktop streaming uses VNC (noVNC). WebRTC would provide smoother video.
+Desktop streaming uses VNC (via noVNC). WebRTC would provide smoother video.
 
 ### Impact
 
-- Higher bandwidth usage
+- Higher bandwidth usage than WebRTC
 - Some latency in visual feedback
 - No audio support
 
 ### Status
 
-VNC is adequate for AI agent use cases. WebRTC upgrade is possible but not prioritized.
+VNC is adequate for AI agent use cases where the human is observing, not interacting. WebRTC upgrade is possible but not prioritized.
 
 ---
 
-## 7. No Multi-Agent Coordination
+## 6. No Multi-Agent Coordination
 
 ### Limitation
 
-While multiple agents *can* target the same display, there's no built-in coordination mechanism.
+Each session is single-agent. There's no built-in mechanism for multiple agents to collaborate on the same desktop.
 
 ### Impact
 
-- Agents may interfere with each other
-- No turn-taking or locking
-- Undefined behavior with concurrent agent actions
-
-### Future Resolution
-
-Multi-agent collaboration with coordination mechanisms (not yet implemented).
-
----
-
-## 8. Single API Provider Active
-
-### Limitation
-
-While multiple providers are supported (Anthropic, Bedrock, Vertex), only one provider can be configured at a time per deployment.
-
-### Impact
-
-- Cannot dynamically switch providers
-- Cannot use different providers for different sessions
+- Cannot have multiple AI agents working together
+- No turn-taking or locking mechanisms
 
 ### Status
 
-By design - matches upstream Anthropic demo behavior.
+Single-agent per session is the intended design. Multi-agent collaboration would require coordination mechanisms.
+
+---
+
+## 7. Linux Desktop Only
+
+### Limitation
+
+The virtual desktop runs Ubuntu Linux. Windows and macOS are not supported.
+
+### Impact
+
+- Cannot test Windows-specific applications
+- Cannot automate macOS workflows
+
+### Future
+
+Windows support would require different virtualization (QEMU/KVM). macOS has licensing restrictions.
 
 ---
 
@@ -170,12 +150,10 @@ By design - matches upstream Anthropic demo behavior.
 
 | Limitation | Severity | Status |
 |------------|----------|--------|
-| Single Desktop | High | Future: Multi-display architecture |
-| No Session Suspension | Medium | Future: CRIU checkpointing |
-| Single Container | Medium | Future: Container orchestration |
-| Shared Filesystem | Low | Future: Per-session directories |
-| No Resource Limits | Low | Future: cgroups integration |
-| VNC Only | Low | Future: WebRTC upgrade |
-| No Multi-Agent Coordination | Low | Future: Coordination mechanisms |
-| Single Provider | Low | By design |
-
+| Anthropic-only | Medium | By design (for now) |
+| No session suspension | Medium | Future: CRIU checkpointing |
+| Single container | Medium | Future: Container orchestration |
+| No per-session limits | Low | Future: cgroups integration |
+| VNC only | Low | Adequate for current use |
+| No multi-agent | Low | By design |
+| Linux only | Low | Future: Windows support |
