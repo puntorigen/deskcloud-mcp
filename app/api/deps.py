@@ -83,24 +83,27 @@ ValidSessionDep = Annotated[DBSession, Depends(get_valid_session)]
 
 def get_vnc_url(session: DBSession | None = None) -> str:
     """
-    Get the VNC viewer URL for a session.
+    Get the VNC viewer URL for a session using token-based routing.
     
-    If session has display info, returns the session-specific noVNC URL.
-    Otherwise, falls back to the default VNC URL from settings.
+    Uses websockify token-based routing: single noVNC on port 6080,
+    with session_id as token for routing to the correct VNC backend.
     
     Args:
-        session: Optional session with display info
+        session: Optional session to get VNC URL for
     
     Returns:
-        noVNC web URL for VNC access
+        noVNC web URL with token for VNC access
     """
     from app.config import settings
+    from app.services.display_manager import display_manager
     
-    # If session has a dedicated display, return its specific VNC URL
-    if session and session.novnc_port:
-        return f"http://{settings.vnc_host}:{session.novnc_port}/vnc.html"
+    # If session provided, try to get token-based URL from display manager
+    if session:
+        vnc_url = display_manager.get_vnc_url(session.id)
+        if vnc_url:
+            return vnc_url
     
-    # Fallback to default VNC URL
+    # Fallback to base VNC URL (no token - for API info endpoints)
     return settings.vnc_base_url
 
 
@@ -112,7 +115,7 @@ def get_session_vnc_url(session_id: str) -> str | None:
         session_id: Session identifier
     
     Returns:
-        noVNC URL or None if no display exists
+        noVNC URL with token or None if no display exists
     """
     from app.services.display_manager import display_manager
     return display_manager.get_vnc_url(session_id)

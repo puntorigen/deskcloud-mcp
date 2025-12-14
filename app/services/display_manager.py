@@ -11,11 +11,14 @@ This enables concurrent sessions with isolated visual state:
 - Each session has its own window manager instance
 - Browser tabs, forms, and desktop state are isolated per session
 
-Architecture:
-    Session 1 → Xvfb :1 → x11vnc :5901 → noVNC :6081
-    Session 2 → Xvfb :2 → x11vnc :5902 → noVNC :6082
-    Session 3 → Xvfb :3 → x11vnc :5903 → noVNC :6083
+Architecture (scalable token-based routing):
+    Session 1 → Xvfb :1 → x11vnc :5901 ─┐
+    Session 2 → Xvfb :2 → x11vnc :5902 ─┼─→ websockify :6080 (token routing)
+    Session 3 → Xvfb :3 → x11vnc :5903 ─┘
     ...
+    
+Single websockify on port 6080 routes to correct VNC backend using tokens.
+VNC URL format: http://host:6080/vnc.html?path=websockify/?token={session_id}
 """
 
 import asyncio
@@ -38,21 +41,19 @@ class DisplayInfo:
     Information about an active display for a session.
     
     Attributes:
+        session_id: Session identifier (used as VNC token)
         display_num: X11 display number (e.g., 1 for :1)
         vnc_port: VNC server port (5900 + display_num)
-        novnc_port: noVNC web port (6080 + display_num)
         xvfb_pid: Process ID of Xvfb server
         vnc_pid: Process ID of x11vnc server
         wm_pid: Process ID of window manager
-        novnc_pid: Process ID of noVNC websocket proxy
     """
+    session_id: str
     display_num: int
     vnc_port: int
-    novnc_port: int
     xvfb_pid: int | None = None
     vnc_pid: int | None = None
     wm_pid: int | None = None
-    novnc_pid: int | None = None
     
     @property
     def display_env(self) -> str:
@@ -61,10 +62,16 @@ class DisplayInfo:
     
     @property
     def vnc_url(self) -> str:
-        """Get the noVNC web URL for this display."""
-        # Use hostname from settings or localhost
+        """
+        Get the noVNC web URL for this display using token-based routing.
+        
+        Single websockify on port 6080 routes to the correct VNC backend
+        based on the session token.
+        """
         host = settings.vnc_host
-        return f"http://{host}:{self.novnc_port}/vnc.html"
+        novnc_port = settings.novnc_base_port  # Single port: 6080
+        # Token-based URL for websockify routing
+        return f"http://{host}:{novnc_port}/vnc.html?path=websockify/?token={self.session_id}"
 
 
 class DisplayManager:
@@ -105,6 +112,9 @@ class DisplayManager:
             cls._instance._initialized = False
         return cls._instance
     
+    # Token file for websockify routing
+    TOKEN_FILE = "/tmp/vnc_tokens"
+    
     def __init__(self):
         """Initialize the display manager."""
         if self._initialized:
@@ -122,10 +132,51 @@ class DisplayManager:
         # Lock for thread-safe access
         self._lock = asyncio.Lock()
         
+        # Ensure token file exists
+        self._init_token_file()
+        
         # Mark as initialized
         self._initialized = True
         
         logger.info("DisplayManager initialized")
+    
+    def _init_token_file(self) -> None:
+        """Initialize the VNC token file for websockify."""
+        try:
+            # Create empty token file if it doesn't exist
+            if not os.path.exists(self.TOKEN_FILE):
+                with open(self.TOKEN_FILE, "w") as f:
+                    f.write("# VNC Token File - managed by DisplayManager\n")
+                logger.info(f"Created VNC token file: {self.TOKEN_FILE}")
+        except Exception as e:
+            logger.warning(f"Could not create token file: {e}")
+    
+    def _add_token(self, session_id: str, vnc_port: int) -> None:
+        """Add a session token to the websockify token file."""
+        try:
+            with open(self.TOKEN_FILE, "a") as f:
+                f.write(f"{session_id}: localhost:{vnc_port}\n")
+            logger.debug(f"Added VNC token for {session_id} -> localhost:{vnc_port}")
+        except Exception as e:
+            logger.error(f"Failed to add token for {session_id}: {e}")
+    
+    def _remove_token(self, session_id: str) -> None:
+        """Remove a session token from the websockify token file."""
+        try:
+            if not os.path.exists(self.TOKEN_FILE):
+                return
+            
+            with open(self.TOKEN_FILE, "r") as f:
+                lines = f.readlines()
+            
+            with open(self.TOKEN_FILE, "w") as f:
+                for line in lines:
+                    if not line.startswith(f"{session_id}:"):
+                        f.write(line)
+            
+            logger.debug(f"Removed VNC token for {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to remove token for {session_id}: {e}")
     
     # =========================================================================
     # Public API
@@ -139,7 +190,7 @@ class DisplayManager:
         1. Xvfb - Virtual framebuffer X server
         2. Window manager (mutter) - Desktop environment
         3. x11vnc - VNC server
-        4. noVNC - Web-based VNC client proxy
+        4. Registers token with shared websockify for routing
         
         Args:
             session_id: Unique session identifier
@@ -159,7 +210,6 @@ class DisplayManager:
             # Allocate display number
             display_num = self._allocate_display_num()
             vnc_port = settings.vnc_base_port + display_num
-            novnc_port = settings.novnc_base_port + display_num
             
             logger.info(f"Creating display :{display_num} for session {session_id}")
             
@@ -176,18 +226,17 @@ class DisplayManager:
                 # Start VNC server
                 vnc_pid = await self._start_vnc(display_num, vnc_port)
                 
-                # Start noVNC proxy
-                novnc_pid = await self._start_novnc(vnc_port, novnc_port)
+                # Register token with shared websockify (single noVNC instance)
+                self._add_token(session_id, vnc_port)
                 
                 # Create display info
                 display_info = DisplayInfo(
+                    session_id=session_id,
                     display_num=display_num,
                     vnc_port=vnc_port,
-                    novnc_port=novnc_port,
                     xvfb_pid=xvfb_pid,
                     vnc_pid=vnc_pid,
                     wm_pid=wm_pid,
-                    novnc_pid=novnc_pid,
                 )
                 
                 # Track the display
@@ -195,7 +244,7 @@ class DisplayManager:
                 
                 logger.info(
                     f"Display :{display_num} created for session {session_id} "
-                    f"(VNC port: {vnc_port}, noVNC port: {novnc_port})"
+                    f"(VNC port: {vnc_port}, token registered)"
                 )
                 
                 return display_info
@@ -203,6 +252,7 @@ class DisplayManager:
             except Exception as e:
                 # Cleanup on failure
                 self._release_display_num(display_num)
+                self._remove_token(session_id)
                 logger.error(f"Failed to create display for session {session_id}: {e}")
                 raise RuntimeError(f"Failed to create display: {e}")
     
@@ -226,11 +276,14 @@ class DisplayManager:
             
             logger.info(f"Destroying display :{display_num} for session {session_id}")
             
-            # Kill processes in reverse order
-            for pid_attr in ["novnc_pid", "vnc_pid", "wm_pid", "xvfb_pid"]:
+            # Kill processes in reverse order (no noVNC - it's shared)
+            for pid_attr in ["vnc_pid", "wm_pid", "xvfb_pid"]:
                 pid = getattr(display_info, pid_attr)
                 if pid:
                     await self._kill_process(pid, pid_attr)
+            
+            # Remove token from shared websockify
+            self._remove_token(session_id)
             
             # Remove tracking
             del self._displays[session_id]
@@ -466,51 +519,9 @@ class DisplayManager:
         
         return proc.pid
     
-    async def _start_novnc(self, vnc_port: int, novnc_port: int) -> int:
-        """
-        Start noVNC websocket proxy.
-        
-        noVNC provides web-based VNC access via WebSocket.
-        
-        Returns:
-            Process ID
-        """
-        # Find noVNC launch script
-        novnc_paths = [
-            "/opt/noVNC/utils/novnc_proxy",
-            "/usr/share/novnc/utils/novnc_proxy",
-            "/usr/share/novnc/utils/launch.sh",
-            "novnc_proxy",
-        ]
-        
-        novnc_cmd = None
-        for path in novnc_paths:
-            if shutil.which(path) or os.path.exists(path):
-                novnc_cmd = path
-                break
-        
-        if not novnc_cmd:
-            logger.warning("noVNC not found, VNC web access will not be available")
-            return 0
-        
-        cmd = [
-            novnc_cmd,
-            "--listen", str(novnc_port),
-            "--vnc", f"localhost:{vnc_port}",
-        ]
-        
-        logger.debug(f"Starting noVNC on port {novnc_port}: {' '.join(cmd)}")
-        
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        
-        # Give noVNC time to start
-        await asyncio.sleep(0.3)
-        
-        return proc.pid
+    # NOTE: noVNC is now started once in entrypoint.sh with token-based routing
+    # All sessions share a single websockify instance on port 6080
+    # Session routing is handled via tokens in /tmp/vnc_tokens
     
     async def _kill_process(self, pid: int, name: str) -> None:
         """

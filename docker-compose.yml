@@ -13,8 +13,6 @@
 #
 # ==============================================================================
 
-version: "3.9"
-
 services:
   # ============================================================================
   # Main Application
@@ -26,24 +24,11 @@ services:
     container_name: deskcloud-mcp
     
     # Port mappings
+    # Only 3 ports needed - websockify handles multi-session VNC routing via tokens
     ports:
-      - "8000:8000"   # FastAPI backend
+      - "8000:8000"   # FastAPI backend API
       - "8080:8080"   # Frontend static server
-      - "6080:6080"   # noVNC web interface (base/unused)
-      - "5900:5900"   # Direct VNC (base/unused)
-      # Session VNC ports (each session gets its own display)
-      # noVNC web interface for sessions (browser-accessible)
-      - "6081:6081"   # Session 1 noVNC
-      - "6082:6082"   # Session 2 noVNC
-      - "6083:6083"   # Session 3 noVNC
-      - "6084:6084"   # Session 4 noVNC
-      - "6085:6085"   # Session 5 noVNC
-      # Direct VNC ports for sessions (VNC client access)
-      - "5901:5901"   # Session 1 VNC
-      - "5902:5902"   # Session 2 VNC
-      - "5903:5903"   # Session 3 VNC
-      - "5904:5904"   # Session 4 VNC
-      - "5905:5905"   # Session 5 VNC
+      - "6080:6080"   # noVNC web interface (single port, token-based routing to sessions)
     
     # Capabilities for OverlayFS (filesystem isolation)
     # CAP_SYS_ADMIN is required for mount operations

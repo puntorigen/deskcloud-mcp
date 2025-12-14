@@ -3,16 +3,19 @@
 # DeskCloud MCP - Entrypoint Script
 # ==============================================================================
 #
-# Multi-Session Architecture:
-# ---------------------------
-# X11/VNC services are now managed dynamically by the DisplayManager service.
+# Multi-Session Architecture (Scalable Token-Based Routing):
+# -----------------------------------------------------------
+# X11/VNC services are managed dynamically by the DisplayManager service.
 # Each session gets its own isolated display created on demand:
-# - Session 1 → DISPLAY=:1, VNC port 5901, noVNC port 6081
-# - Session 2 → DISPLAY=:2, VNC port 5902, noVNC port 6082
-# - etc.
+# - Session 1 → DISPLAY=:1, VNC port 5901 ─┐
+# - Session 2 → DISPLAY=:2, VNC port 5902 ─┼─→ websockify :6080 (token routing)
+# - Session N → DISPLAY=:N, VNC port 590N ─┘
 #
-# This script only starts:
-# 1. Database initialization
+# Single websockify on port 6080 routes to correct VNC backend via tokens.
+# VNC URL format: http://host:6080/vnc.html?path=websockify/?token={session_id}
+#
+# This script starts:
+# 1. Shared websockify with token-based VNC routing
 # 2. FastAPI backend (which includes DisplayManager)
 # 3. Static file server for frontend
 #
@@ -31,15 +34,18 @@ echo ""
 # ==============================================================================
 
 export HOME=/home/computeruse
+export VNC_TOKEN_FILE=/tmp/vnc_tokens
 
 cd $HOME
 
 # ==============================================================================
-# NOTE: X11/VNC services are now created per-session by DisplayManager
+# Initialize VNC Token File
 # ==============================================================================
 
-echo "ℹ️  X11/VNC services will be created per-session by DisplayManager"
-echo "   Each session gets an isolated DISPLAY and VNC port"
+echo "🔑 Initializing VNC token file..."
+echo "# VNC Token File - managed by DisplayManager" > $VNC_TOKEN_FILE
+echo "# Format: session_id: localhost:vnc_port" >> $VNC_TOKEN_FILE
+echo "✅ Token file ready: $VNC_TOKEN_FILE"
 echo ""
 
 # ==============================================================================
@@ -119,6 +125,27 @@ fi
 # Start Application Services
 # ==============================================================================
 
+# Find websockify executable
+WEBSOCKIFY_PATH="/opt/noVNC/utils/websockify/run"
+
+echo "🖥️  Starting shared websockify (token-based VNC routing)..."
+if [ -x "$WEBSOCKIFY_PATH" ]; then
+    # Use websockify with token config and noVNC web interface
+    # --target-config: File with 'token: host:port' entries for routing
+    # --web: Serve noVNC web interface
+    $WEBSOCKIFY_PATH \
+        --web /opt/noVNC \
+        --target-config=$VNC_TOKEN_FILE \
+        6080 \
+        > /tmp/websockify.log 2>&1 &
+    echo "✅ websockify started on port 6080"
+    echo "   Token routing via: $VNC_TOKEN_FILE"
+    echo "   noVNC web interface: /opt/noVNC"
+else
+    echo "⚠️  WARNING: websockify not found at $WEBSOCKIFY_PATH"
+    echo "   VNC web access will not work"
+fi
+
 echo "🚀 Starting FastAPI backend..."
 uvicorn app.main:app \
     --host 0.0.0.0 \
@@ -144,19 +171,25 @@ echo "=============================================="
 echo "  ✅ All services started!"
 echo "=============================================="
 echo ""
-echo "  📡 API:       http://localhost:8000"
-echo "  📝 API Docs:  http://localhost:8000/docs"
-echo "  🖥️  Frontend:  http://localhost:8080"
+echo "  📡 API:        http://localhost:8000"
+echo "  📝 API Docs:   http://localhost:8000/docs"
+echo "  🖥️  Frontend:   http://localhost:8080"
+echo "  👁️  VNC Viewer: http://localhost:6080/vnc.html"
 echo ""
-echo "  Multi-Session Mode:"
-echo "  -------------------"
+echo "  Scalable Multi-Session Architecture:"
+echo "  -------------------------------------"
 echo "  Each session gets:"
-echo "  - Isolated X11 display (VNC port 6081, 6082, ...)"
-echo "  - Isolated filesystem (HOME, downloads, configs)"
+echo "  - Isolated X11 display (DISPLAY=:1, :2, :3, ...)"
+echo "  - Dedicated VNC server (ports 5901, 5902, ...)"
+echo "  - Token-based routing via single websockify"
 echo ""
-echo "  Session isolation:"
-echo "  - Display:    http://localhost:6081/vnc.html (per session)"
-echo "  - Filesystem: OverlayFS with CoW (copy-on-write)"
+echo "  VNC URL format (token-based):"
+echo "  http://localhost:6080/vnc.html?path=websockify/?token={session_id}"
+echo ""
+echo "  Supports 20+ concurrent sessions with:"
+echo "  - Only 3 exposed ports (8000, 8080, 6080)"
+echo "  - Dynamic session routing via tokens"
+echo "  - Optional OverlayFS filesystem isolation"
 echo ""
 echo "  Set ANTHROPIC_API_KEY environment variable"
 echo "  to enable agent functionality."
@@ -167,8 +200,8 @@ echo "=============================================="
 # Keep Container Running
 # ==============================================================================
 
-# Tail logs for debugging (shows both FastAPI and frontend logs)
-tail -f /tmp/fastapi.log /tmp/frontend.log &
+# Tail logs for debugging
+tail -f /tmp/fastapi.log /tmp/frontend.log /tmp/websockify.log 2>/dev/null &
 
 # Keep the container running
 wait
