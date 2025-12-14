@@ -170,18 +170,19 @@ class SessionRepository:
         session_id: str,
         display_num: int,
         vnc_port: int,
-        novnc_port: int,
     ) -> bool:
         """
         Update a session's display configuration.
         
         Called after creating an isolated X11 display for the session.
         
+        Note: noVNC port is no longer stored per-session since we use
+        token-based routing with a single websockify instance on port 6080.
+        
         Args:
             session_id: Session to update
             display_num: X11 display number (e.g., 1 for :1)
-            vnc_port: VNC server port
-            novnc_port: noVNC web interface port
+            vnc_port: VNC server port (internal, for x11vnc)
         
         Returns:
             True if session was found and updated
@@ -192,7 +193,6 @@ class SessionRepository:
             .values(
                 display_num=display_num,
                 vnc_port=vnc_port,
-                novnc_port=novnc_port,
                 updated_at=datetime.utcnow(),
             )
         )

@@ -446,40 +446,47 @@ class DisplayManager:
     
     async def _start_window_manager(self, display_num: int) -> int:
         """
-        Start window manager for the display.
+        Start desktop environment for the display.
         
-        Uses mutter for GNOME-compatible desktop or falls back to simpler WMs.
+        Sets background color and starts tint2 taskbar (from Anthropic base image).
+        Mutter doesn't work in pure Xvfb, so we use simpler desktop components.
         
         Returns:
-            Process ID
+            Process ID of tint2 (or 0 if not available)
         """
         display = f":{display_num}"
         env = {**os.environ, "DISPLAY": display}
         
-        # Try mutter first (GNOME), then fallback to simpler WMs
-        wm_commands = [
-            ["mutter", "--replace", "--sm-disable"],
-            ["openbox"],
-            ["fluxbox"],
-        ]
-        
-        for cmd in wm_commands:
-            if shutil.which(cmd[0]):
-                logger.debug(f"Starting {cmd[0]} for display {display}")
-                
-                proc = subprocess.Popen(
-                    cmd,
+        # Set a visible background color (dark gray instead of black)
+        if shutil.which("xsetroot"):
+            try:
+                subprocess.run(
+                    ["xsetroot", "-solid", "#2d2d2d", "-display", display],
                     env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    capture_output=True,
+                    timeout=5,
                 )
-                
-                # Give WM time to start
-                await asyncio.sleep(0.5)
-                
-                return proc.pid
+                logger.debug(f"Set background for display {display}")
+            except Exception as e:
+                logger.warning(f"Could not set background: {e}")
         
-        logger.warning("No window manager found, continuing without one")
+        # Start tint2 taskbar (comes with Anthropic base image)
+        if shutil.which("tint2"):
+            logger.debug(f"Starting tint2 for display {display}")
+            
+            proc = subprocess.Popen(
+                ["tint2"],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            
+            # Give tint2 time to start
+            await asyncio.sleep(0.5)
+            
+            return proc.pid
+        
+        logger.warning("No tint2 found, desktop may appear empty")
         return 0
     
     async def _start_vnc(self, display_num: int, vnc_port: int) -> int:

@@ -138,11 +138,11 @@ class SessionManager:
             display_info = await display_manager.create_display(session.id)
             
             # Update session with display information
+            # Note: novnc_port is no longer per-session (token-based routing uses single port)
             await repo.update_session_display(
                 session_id=session.id,
                 display_num=display_info.display_num,
                 vnc_port=display_info.vnc_port,
-                novnc_port=display_info.novnc_port,
             )
             
             # Refresh session to get updated display info
