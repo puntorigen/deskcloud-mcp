@@ -72,6 +72,7 @@ async def create_session(
         model=body.model,
         provider=body.provider,
         system_prompt_suffix=body.system_prompt_suffix,
+        anthropic_api_key=body.anthropic_api_key,  # BYOK support
     )
     
     return SessionResponse(
@@ -239,11 +240,15 @@ async def send_message(
             detail="Session is already processing a message. Wait for completion or cancel.",
         )
     
-    # Check API key is configured
-    if not settings.anthropic_api_key.get_secret_value():
+    # Check if API key is available (either server-side or BYOK from session)
+    # BYOK key is checked in session_manager, here we just verify there's a fallback
+    has_server_key = bool(settings.anthropic_api_key.get_secret_value())
+    has_session_key = session_manager.has_api_key(session.id)
+    
+    if not has_server_key and not has_session_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Anthropic API key not configured. Set ANTHROPIC_API_KEY environment variable.",
+            detail="No API key configured. Either set ANTHROPIC_API_KEY or provide your own key when creating the session.",
         )
     
     try:

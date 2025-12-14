@@ -41,12 +41,14 @@ class ActiveSession:
         session_id: Database session ID
         runner: AgentRunner instance if executing
         event_queue: Queue for SSE events
-        last_activity: Timestamp of last interaction
+        is_processing: Whether agent is currently processing
+        api_key: BYOK Anthropic API key (stored in memory only, not persisted)
     """
     session_id: str
     runner: AgentRunner | None = None
     event_queue: asyncio.Queue[Event] = field(default_factory=asyncio.Queue)
     is_processing: bool = False
+    api_key: str | None = None  # BYOK: user's API key (memory only)
 
 
 class SessionManager:
@@ -97,6 +99,7 @@ class SessionManager:
         model: str | None = None,
         provider: str = "anthropic",
         system_prompt_suffix: str | None = None,
+        anthropic_api_key: str | None = None,
     ) -> DBSession:
         """
         Create a new chat session with isolated display and filesystem.
@@ -107,6 +110,7 @@ class SessionManager:
             model: Claude model identifier
             provider: API provider
             system_prompt_suffix: Custom system prompt addition
+            anthropic_api_key: BYOK - user's API key (stored in memory only)
         
         Returns:
             Created DBSession instance with display info
@@ -153,10 +157,11 @@ class SessionManager:
             # The session can still work without a display for testing
             print(f"Warning: Could not create display for session {session.id}: {e}")
         
-        # Track as active
+        # Track as active with optional BYOK key
         async with self._lock:
             self._active_sessions[session.id] = ActiveSession(
                 session_id=session.id,
+                api_key=anthropic_api_key,  # BYOK: stored in memory only
             )
         
         return session
@@ -284,8 +289,17 @@ class SessionManager:
         # Merge display and filesystem environments
         session_env = {**display_env, **filesystem_env}
         
+        # Determine which API key to use (priority order):
+        # 1. Explicit api_key parameter (passed with this message)
+        # 2. Session's stored BYOK key (from session creation)
+        # 3. Server's ANTHROPIC_API_KEY env var (fallback)
+        effective_api_key = api_key or ""
+        if not effective_api_key:
+            async with self._lock:
+                if session.id in self._active_sessions:
+                    effective_api_key = self._active_sessions[session.id].api_key or ""
+        
         # Create and configure agent runner
-        # Pass BYOK API key if provided, otherwise AgentRunner uses env var
         runner = AgentRunner(
             session_id=session.id,
             model=session.model,
@@ -294,7 +308,7 @@ class SessionManager:
             messages=messages,
             tool_version=tool_version,
             display_env=session_env,
-            api_key=api_key or "",  # Empty string triggers env var fallback
+            api_key=effective_api_key,  # Empty string triggers env var fallback
         )
         
         # Track the runner
@@ -452,7 +466,12 @@ class SessionManager:
         """Check if a session is currently processing a message."""
         active = self._active_sessions.get(session_id)
         return active is not None and active.is_processing
-    
+
+    def has_api_key(self, session_id: str) -> bool:
+        """Check if a session has a BYOK API key configured."""
+        active = self._active_sessions.get(session_id)
+        return active is not None and bool(active.api_key)
+
     async def cancel_processing(self, session_id: str) -> bool:
         """
         Cancel processing for a session.

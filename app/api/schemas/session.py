@@ -70,6 +70,15 @@ class SessionCreate(BaseModel):
         examples=["Always explain your reasoning step by step."],
     )
     
+    # BYOK (Bring Your Own Key) - optional Anthropic API key for this session
+    # If not provided, falls back to server's ANTHROPIC_API_KEY env var
+    anthropic_api_key: str | None = Field(
+        default=None,
+        min_length=50,
+        description="User's Anthropic API key (BYOK). If not provided, uses server default.",
+        examples=["sk-ant-api03-..."],
+    )
+    
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
