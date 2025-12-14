@@ -46,9 +46,9 @@ echo ""
 # Initialize Database
 # ==============================================================================
 
-echo "🗄️  Initializing database..."
+echo "🗄️  Database will be initialized on app startup..."
 mkdir -p /home/computeruse/data
-python -c "from app.db.session import init_db_sync; init_db_sync()"
+# Skip separate init - the app's lifespan handler initializes the database
 
 # ==============================================================================
 # Initialize Filesystem Isolation
