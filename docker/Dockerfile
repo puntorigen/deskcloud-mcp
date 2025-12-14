@@ -30,10 +30,11 @@ LABEL version="1.0.0"
 
 USER root
 
-# Install nginx for reverse proxy and zstd for filesystem snapshots
+# Install nginx for reverse proxy, zstd for snapshots, xset for display settings
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     zstd \
+    x11-xserver-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

@@ -88,6 +88,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start session cleanup service
     await cleanup_service.start()
     
+    # Recover displays for any active sessions from before restart
+    print("🔄 Checking for active sessions to recover...")
+    recovered = await display_manager.recover_active_sessions()
+    if recovered > 0:
+        print(f"   Recovered {recovered} session display(s)")
+    
     print(f"✅ Ready to accept requests on {settings.api_v1_prefix}")
     print(f"📄 LLMs.txt available at /llms.txt")
     

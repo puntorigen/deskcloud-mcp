@@ -361,6 +361,59 @@ class DisplayManager:
         
         logger.info("All displays shut down")
     
+    async def recover_active_sessions(self) -> int:
+        """
+        Recover displays for active sessions from the database.
+        
+        Called on startup to recreate displays for sessions that were active
+        before a container restart/sleep. This ensures the DisplayManager's
+        in-memory state matches the database.
+        
+        Returns:
+            Number of sessions recovered
+        """
+        from app.db.session import get_db_context
+        from sqlalchemy import text
+        
+        recovered = 0
+        
+        try:
+            async with get_db_context() as db:
+                # Find active sessions that had displays
+                result = await db.execute(
+                    text("""
+                        SELECT id, display_num, vnc_port 
+                        FROM sessions 
+                        WHERE status = 'active' 
+                        AND display_num IS NOT NULL
+                        ORDER BY created_at DESC
+                    """)
+                )
+                active_sessions = result.fetchall()
+                
+                if not active_sessions:
+                    logger.info("No active sessions to recover")
+                    return 0
+                
+                logger.info(f"Found {len(active_sessions)} active session(s) to recover")
+                
+                for row in active_sessions:
+                    session_id = row[0]
+                    try:
+                        # Recreate the display for this session
+                        await self.create_display(session_id)
+                        recovered += 1
+                        logger.info(f"Recovered display for session {session_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to recover display for {session_id}: {e}")
+                
+                logger.info(f"Recovered {recovered}/{len(active_sessions)} session displays")
+                
+        except Exception as e:
+            logger.error(f"Failed to recover sessions: {e}")
+        
+        return recovered
+    
     # =========================================================================
     # Private Methods - Display Number Management
     # =========================================================================
@@ -448,7 +501,7 @@ class DisplayManager:
         """
         Start desktop environment for the display.
         
-        Sets background color and starts tint2 taskbar (from Anthropic base image).
+        Sets background color, disables screensaver/blanking, and starts tint2 taskbar.
         Mutter doesn't work in pure Xvfb, so we use simpler desktop components.
         
         Returns:
@@ -471,6 +524,7 @@ class DisplayManager:
                 logger.warning(f"Could not set background: {e}")
         
         # Start tint2 taskbar (comes with Anthropic base image)
+        tint2_pid = 0
         if shutil.which("tint2"):
             logger.debug(f"Starting tint2 for display {display}")
             
@@ -483,11 +537,34 @@ class DisplayManager:
             
             # Give tint2 time to start
             await asyncio.sleep(0.5)
-            
-            return proc.pid
+            tint2_pid = proc.pid
+        else:
+            logger.warning("No tint2 found, desktop may appear empty")
         
-        logger.warning("No tint2 found, desktop may appear empty")
-        return 0
+        # Disable screensaver and screen blanking AFTER all desktop components start
+        # (prevents black screen after inactivity)
+        xset_path = shutil.which("xset") or "/usr/bin/xset"
+        if os.path.exists(xset_path):
+            try:
+                # Disable screensaver
+                r1 = subprocess.run([xset_path, "-display", display, "s", "off"], 
+                                   env=env, capture_output=True, timeout=5)
+                # Disable DPMS (Display Power Management) - may fail on Xvfb, that's OK
+                subprocess.run([xset_path, "-display", display, "-dpms"], 
+                              env=env, capture_output=True, timeout=5)
+                # Disable screen blanking
+                r2 = subprocess.run([xset_path, "-display", display, "s", "noblank"], 
+                                   env=env, capture_output=True, timeout=5)
+                if r1.returncode == 0 and r2.returncode == 0:
+                    logger.info(f"Disabled screensaver/blanking for display {display}")
+                else:
+                    logger.warning(f"xset returned non-zero: s off={r1.returncode}, s noblank={r2.returncode}")
+            except Exception as e:
+                logger.warning(f"Could not disable screensaver: {e}")
+        else:
+            logger.warning(f"xset not found at {xset_path}, screensaver may activate")
+        
+        return tint2_pid
     
     async def _start_vnc(self, display_num: int, vnc_port: int) -> int:
         """
