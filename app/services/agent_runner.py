@@ -2,26 +2,24 @@
 Agent Runner Service
 ====================
 
-Wraps the Anthropic Computer Use sampling_loop with callbacks
-that emit events to an async queue for SSE streaming.
+Wraps the sampling_loop with callbacks that emit events to an async queue
+for SSE streaming.
 
-This is the bridge between the Anthropic demo code and our FastAPI backend.
-The key insight is that sampling_loop already accepts callbacks - we just
-need to implement them to push events instead of updating Streamlit state.
+This is the bridge between our forked tools and the FastAPI backend.
+The key improvement is that each session gets its own isolated tools
+with session-specific environment (no global os.environ modification).
 
 Architecture:
     1. AgentRunner receives user message and session context
-    2. Creates async queue and callback functions
-    3. Spawns background task running sampling_loop
+    2. Creates ToolCollection with session-specific environment
+    3. Spawns background task running sampling_loop with pre-built tools
     4. Callbacks push Event objects to queue
     5. SSE endpoint consumes queue and streams to client
 """
 
 import asyncio
-import sys
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 
@@ -39,48 +37,25 @@ from app.core.events import (
     tool_use_event,
 )
 
-# =============================================================================
-# Import Anthropic Demo Code
-# =============================================================================
-
-# Add the computer_use_demo to Python path so we can import it
-# This allows us to reuse the existing loop.py and tools unchanged
-DEMO_PATH = Path(__file__).parent.parent.parent.parent / "computer-use-demo"
-if str(DEMO_PATH) not in sys.path:
-    sys.path.insert(0, str(DEMO_PATH))
-
-try:
-    from computer_use_demo.loop import APIProvider, sampling_loop
-    from computer_use_demo.tools import ToolResult, ToolVersion
-    ANTHROPIC_DEMO_AVAILABLE = True
-except ImportError as e:
-    # Allow running without the demo code (for testing schemas/routes)
-    print(f"⚠️  Warning: Could not import computer_use_demo: {e}")
-    print("   Agent functionality will be limited to mock responses.")
-    ANTHROPIC_DEMO_AVAILABLE = False
-    
-    # Create mock types for type hints
-    class APIProvider:  # type: ignore
-        ANTHROPIC = "anthropic"
-        BEDROCK = "bedrock"
-        VERTEX = "vertex"
-    
-    class ToolResult:  # type: ignore
-        output: str | None = None
-        error: str | None = None
-        base64_image: str | None = None
-    
-    ToolVersion = str
+# Import our forked tools with per-session environment support
+from app.tools import (
+    BashTool,
+    ComputerTool,
+    EditTool,
+    ToolCollection,
+    ToolResult,
+)
+from app.tools.loop import APIProvider, sampling_loop
+from app.tools.groups import ToolVersion, TOOL_GROUPS_BY_VERSION
 
 
 @dataclass
 class AgentRunner:
     """
-    Orchestrates agent execution with event streaming.
+    Orchestrates agent execution with event streaming and per-session isolation.
     
-    Wraps the Anthropic sampling_loop with callbacks that push
-    events to an async queue. The queue can be consumed by an
-    SSE endpoint to stream real-time updates to the client.
+    Each AgentRunner creates tools with session-specific environment variables,
+    ensuring complete isolation between sessions (no race conditions).
     
     Attributes:
         session_id: Current session identifier
@@ -89,20 +64,27 @@ class AgentRunner:
         api_key: API key for the provider
         system_prompt_suffix: Custom instructions
         messages: Conversation history (mutable - updated by loop)
-        display_env: DISPLAY environment for isolated X11 desktop
+        session_env: Session-specific environment (DISPLAY, HOME, TMPDIR, etc.)
         event_queue: Queue for streaming events to SSE
         _task: Background task running the agent loop
+        _tool_collection: Pre-built tools with session environment
     
     Example:
         runner = AgentRunner(
             session_id="sess_123",
             model="claude-sonnet-4-5-20250929",
             messages=[],
-            display_env={"DISPLAY": ":1"},
+            session_env={
+                "DISPLAY": ":5",
+                "DISPLAY_NUM": "5",
+                "WIDTH": "1024",
+                "HEIGHT": "768",
+                "HOME": "/sessions/active/sess_123/merged/home/user",
+                "TMPDIR": "/sessions/active/sess_123/merged/tmp",
+            },
         )
         queue = await runner.run("Search the weather in Santiago, Chile")
         
-        # Consume events from queue
         async for event in runner.iter_events():
             yield event.to_sse()
     """
@@ -113,20 +95,40 @@ class AgentRunner:
     api_key: str = ""
     system_prompt_suffix: str = ""
     messages: list[dict[str, Any]] = field(default_factory=list)
-    tool_version: str = "computer_use_20250124"  # Default for Claude 4.5
+    tool_version: str = "computer_use_20250124"
     max_tokens: int = 16384
     thinking_budget: int | None = None
-    display_env: dict[str, str] | None = None  # DISPLAY env for isolated desktop
+    session_env: dict[str, str] | None = None  # Session-specific environment
     
     # Internal state
     event_queue: asyncio.Queue[Event] = field(default_factory=asyncio.Queue)
     _task: asyncio.Task | None = field(default=None, repr=False)
     _message_id: str = field(default="", repr=False)
+    _tool_collection: ToolCollection | None = field(default=None, repr=False)
     
     def __post_init__(self):
-        """Initialize API key from settings if not provided."""
+        """Initialize API key and tool collection."""
         if not self.api_key:
             self.api_key = settings.anthropic_api_key.get_secret_value()
+        
+        # Create tool collection with session-specific environment
+        self._tool_collection = self._create_tool_collection()
+    
+    def _create_tool_collection(self) -> ToolCollection:
+        """
+        Create a ToolCollection with session-specific environment.
+        
+        Each tool receives the session_env dict which is used for all
+        subprocess calls, ensuring complete isolation between sessions.
+        """
+        env = self.session_env or {}
+        
+        # Create tools with session environment
+        computer_tool = ComputerTool(env=env)
+        bash_tool = BashTool(env=env)
+        edit_tool = EditTool(env=env)
+        
+        return ToolCollection(computer_tool, bash_tool, edit_tool)
     
     # =========================================================================
     # Callbacks for sampling_loop
@@ -140,27 +142,22 @@ class AgentRunner:
         - Text responses (type: "text")
         - Thinking blocks (type: "thinking")
         - Tool use requests (type: "tool_use")
-        
-        Pushes appropriate event to the queue for SSE streaming.
         """
         block_type = content_block.get("type", "unknown")
         
         if block_type == "text":
-            # Regular text response from Claude
             text_content = content_block.get("text", "")
             if text_content:
                 event = text_event(text_content, self._message_id)
                 self._queue_event(event)
                 
         elif block_type == "thinking":
-            # Extended thinking content
             thinking_content = content_block.get("thinking", "")
             if thinking_content:
                 event = thinking_event(thinking_content, self._message_id)
                 self._queue_event(event)
                 
         elif block_type == "tool_use":
-            # Claude wants to use a tool
             event = tool_use_event(
                 tool_name=content_block.get("name", "unknown"),
                 tool_input=content_block.get("input", {}),
@@ -172,8 +169,6 @@ class AgentRunner:
     def _tool_output_callback(self, result: ToolResult, tool_use_id: str) -> None:
         """
         Callback invoked after tool execution completes.
-        
-        Emits tool result event with output, error, or screenshot.
         """
         event = tool_result_event(
             tool_use_id=tool_use_id,
@@ -192,12 +187,8 @@ class AgentRunner:
     ) -> None:
         """
         Callback for API response logging/debugging.
-        
-        In production, this would log to a monitoring service.
-        For now, we emit status events for debugging.
         """
         if error:
-            # Emit error event
             err_event = error_event(
                 error=str(error),
                 code=type(error).__name__,
@@ -206,17 +197,10 @@ class AgentRunner:
             self._queue_event(err_event)
     
     def _queue_event(self, event: Event) -> None:
-        """
-        Thread-safe event queue insertion.
-        
-        Uses put_nowait since we're in sync callbacks but the
-        queue is consumed by async code. The queue is unbounded
-        so this won't block.
-        """
+        """Thread-safe event queue insertion."""
         try:
             self.event_queue.put_nowait(event)
         except asyncio.QueueFull:
-            # Shouldn't happen with unbounded queue, but handle gracefully
             print(f"⚠️  Event queue full, dropping event: {event.type}")
     
     # =========================================================================
@@ -226,9 +210,6 @@ class AgentRunner:
     async def run(self, user_message: str, message_id: str = "") -> asyncio.Queue[Event]:
         """
         Start agent execution with the given user message.
-        
-        Adds the user message to conversation history and spawns
-        a background task running the sampling loop.
         
         Args:
             user_message: The user's input message
@@ -263,34 +244,10 @@ class AgentRunner:
         """
         Internal method that runs the sampling loop.
         
-        Handles the actual integration with Anthropic's code.
-        Emits completion event when done (success or error).
-        
-        Note: Sets environment variables from display_env if provided.
-        This includes DISPLAY for isolated X11 desktops and HOME/TMPDIR
-        for isolated filesystems per session.
+        Uses our forked tools with pre-built ToolCollection containing
+        session-specific environment. No global os.environ modification!
         """
-        import os
-        
-        # Save original environment variables that we'll modify
-        original_env = {}
-        env_keys_to_set = ["DISPLAY", "HOME", "TMPDIR", "XDG_CONFIG_HOME", 
-                          "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"]
-        
-        for key in env_keys_to_set:
-            original_env[key] = os.environ.get(key)
-        
-        # Set session-specific environment variables
-        if self.display_env:
-            for key, value in self.display_env.items():
-                os.environ[key] = value
-        
         try:
-            if not ANTHROPIC_DEMO_AVAILABLE:
-                # Mock response for testing without the demo
-                await self._run_mock_loop()
-                return
-            
             # Map provider string to enum
             provider_map = {
                 "anthropic": APIProvider.ANTHROPIC,
@@ -299,7 +256,9 @@ class AgentRunner:
             }
             provider = provider_map.get(self.provider, APIProvider.ANTHROPIC)
             
-            # Run the Anthropic sampling loop
+            # Run the sampling loop with our pre-built tools
+            # This is the key change: we pass tool_collection instead of
+            # letting sampling_loop create tools with default environment
             self.messages = await sampling_loop(
                 model=self.model,
                 provider=provider,
@@ -309,10 +268,11 @@ class AgentRunner:
                 tool_output_callback=self._tool_output_callback,
                 api_response_callback=self._api_response_callback,
                 api_key=self.api_key,
-                only_n_most_recent_images=3,  # Keep context manageable
+                only_n_most_recent_images=3,
                 max_tokens=self.max_tokens,
                 tool_version=self.tool_version,
                 thinking_budget=self.thinking_budget,
+                tool_collection=self._tool_collection,  # Pre-built with session env!
             )
             
             # Emit completion event
@@ -337,81 +297,13 @@ class AgentRunner:
                 status="error",
             )
             self._queue_event(complete_event)
-        
-        finally:
-            # Restore original environment variables
-            for key, original_value in original_env.items():
-                if original_value is not None:
-                    os.environ[key] = original_value
-                elif key in os.environ:
-                    # We set it but there was no original, remove it
-                    del os.environ[key]
     
-    async def _run_mock_loop(self) -> None:
-        """
-        Mock agent loop for testing without Anthropic demo.
-        
-        Simulates a simple response with tool usage.
-        """
-        # Simulate thinking
-        await asyncio.sleep(0.5)
-        self._output_callback({
-            "type": "text",
-            "text": "I'll help you with that. Let me search for the information...",
-        })
-        
-        # Simulate tool use
-        await asyncio.sleep(0.3)
-        self._output_callback({
-            "type": "tool_use",
-            "id": "toolu_mock_123",
-            "name": "computer",
-            "input": {"action": "screenshot"},
-        })
-        
-        # Simulate tool result  
-        await asyncio.sleep(0.5)
-        mock_result = type('MockResult', (), {
-            'output': 'Screenshot captured successfully',
-            'error': None,
-            'base64_image': None,
-        })()
-        self._tool_output_callback(mock_result, "toolu_mock_123")
-        
-        # Final response
-        await asyncio.sleep(0.3)
-        self._output_callback({
-            "type": "text",
-            "text": "I've completed the task. This is a mock response since the Anthropic demo is not available.",
-        })
-        
-        # Update messages with mock response
-        self.messages.append({
-            "role": "assistant",
-            "content": [
-                {"type": "text", "text": "I've completed the task. (Mock response)"},
-            ],
-        })
-        
-        # Completion
-        complete_event = message_complete_event(
-            message_id=self._message_id,
-            status="completed",
-        )
-        self._queue_event(complete_event)
-    
-    async def iter_events(self, timeout: float = 30.0) -> asyncio.Queue[Event]:
+    async def iter_events(self, timeout: float = 30.0):
         """
         Async iterator for consuming events.
         
         Yields events from the queue with keepalive on timeout.
         Stops when message_complete event is received.
-        
-        Args:
-            timeout: Seconds to wait before emitting keepalive
-        
-        Yields:
-            Event objects for SSE formatting
         """
         while True:
             try:
@@ -421,20 +313,14 @@ class AgentRunner:
                 )
                 yield event
                 
-                # Stop on completion
                 if event.type == EventType.MESSAGE_COMPLETE:
                     break
                     
             except asyncio.TimeoutError:
-                # Emit keepalive to maintain connection
                 yield keepalive_event()
     
     async def cancel(self) -> None:
-        """
-        Cancel the running agent task.
-        
-        Useful for handling client disconnection or timeout.
-        """
+        """Cancel the running agent task."""
         if self._task and not self._task.done():
             self._task.cancel()
             try:
@@ -446,4 +332,3 @@ class AgentRunner:
     def is_running(self) -> bool:
         """Check if agent loop is currently executing."""
         return self._task is not None and not self._task.done()
-

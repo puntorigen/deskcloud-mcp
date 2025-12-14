@@ -298,18 +298,24 @@ class DisplayManager:
     def get_display_env(self, session_id: str) -> dict[str, str] | None:
         """
         Get environment variables for running processes on this display.
-        
+
         Args:
             session_id: Session identifier
-        
+
         Returns:
-            Dict with DISPLAY variable, or None if no display
+            Dict with DISPLAY, DISPLAY_NUM, WIDTH, HEIGHT variables, or None if no display
         """
         display_info = self._displays.get(session_id)
         if not display_info:
             return None
-        
-        return {"DISPLAY": display_info.display_env}
+
+        # Return all env vars needed by ComputerTool
+        return {
+            "DISPLAY": display_info.display_env,
+            "DISPLAY_NUM": str(display_info.display_num),
+            "WIDTH": str(display_info.width),
+            "HEIGHT": str(display_info.height),
+        }
     
     def get_display_info(self, session_id: str) -> DisplayInfo | None:
         """

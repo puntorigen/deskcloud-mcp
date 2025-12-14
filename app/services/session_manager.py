@@ -299,7 +299,8 @@ class SessionManager:
                 if session.id in self._active_sessions:
                     effective_api_key = self._active_sessions[session.id].api_key or ""
         
-        # Create and configure agent runner
+        # Create and configure agent runner with session-specific environment
+        # This ensures complete isolation between sessions (no race conditions)
         runner = AgentRunner(
             session_id=session.id,
             model=session.model,
@@ -307,7 +308,7 @@ class SessionManager:
             system_prompt_suffix=session.system_prompt_suffix or "",
             messages=messages,
             tool_version=tool_version,
-            display_env=session_env,
+            session_env=session_env,  # Per-session env for tool isolation
             api_key=effective_api_key,  # Empty string triggers env var fallback
         )
         
